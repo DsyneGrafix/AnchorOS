@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from typing import Any
 
 from core.module import Module
 
@@ -30,10 +31,20 @@ class Audit(Module):
             f"{record['event']} — {record['message']}"
         )
 
+    def handle_event(self, payload: dict[str, Any]) -> None:
+        """Receive an Event Bus payload and preserve it as an audit record."""
+
+        self.log(
+            source=str(payload["source"]),
+            event=str(payload["event"]),
+            message=str(payload["message"]),
+        )
+
     def get_records(self) -> list[dict[str, str]]:
         return self.records.copy()
 
 
 def create_module(context: dict) -> Audit:
-    """Create the Audit service."""
+    """Create the AnchorCore Audit service."""
+
     return Audit()

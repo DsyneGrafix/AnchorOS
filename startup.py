@@ -1,3 +1,5 @@
+from anchorcore.audit import Audit
+from anchorcore.eventbus import EventBus
 from core.module import Module
 from core.module_manager import ModuleManager
 
@@ -20,6 +22,29 @@ def boot() -> None:
         for module in core_modules
     }
 
+    audit = context.get("Audit Engine")
+    event_bus = context.get("Event Bus")
+
+    if not isinstance(audit, Audit):
+        raise RuntimeError(
+            "AnchorOS requires the AnchorCore Audit Engine."
+        )
+
+    if not isinstance(event_bus, EventBus):
+        raise RuntimeError(
+            "AnchorOS requires the AnchorCore Event Bus."
+        )
+
+    event_bus.subscribe(
+        event_name="framework.started",
+        handler=audit.handle_event,
+    )
+
+    event_bus.subscribe(
+        event_name="framework.stopping",
+        handler=audit.handle_event,
+    )
+
     print("\nDiscovering Frameworks...\n")
 
     manager.discover(
@@ -40,8 +65,6 @@ def boot() -> None:
             f"{module['status']} "
             f"(v{module['version']})"
         )
-
-    audit = manager.get("Audit Engine")
 
     print("\nAudit Records")
     print("-" * 40)
