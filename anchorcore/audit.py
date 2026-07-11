@@ -32,3 +32,8 @@ class Audit(Module):
 
     def get_records(self) -> list[dict[str, str]]:
         return self.records.copy()
+
+
+def create_module(context: dict) -> Audit:
+    """Create the Audit service."""
+    return Audit()

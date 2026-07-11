@@ -26,3 +26,14 @@ class AnchorStack(Module):
         )
 
         super().stop()
+def create_module(context: dict) -> AnchorStack:
+    """Create AnchorStack using AnchorCore services."""
+
+    audit = context.get("Audit Engine")
+
+    if audit is None:
+        raise RuntimeError(
+            "AnchorStack requires the AnchorCore Audit Engine."
+        )
+
+    return AnchorStack(audit=audit)

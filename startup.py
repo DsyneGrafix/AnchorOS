@@ -1,9 +1,5 @@
-from anchorcore.audit import Audit
-from anchorcore.configuration import Configuration
-from anchorcore.eventbus import EventBus
-from anchorcore.health import Health
+from core.module import Module
 from core.module_manager import ModuleManager
-from frameworks.anchorstack import AnchorStack
 
 
 def boot() -> None:
@@ -15,25 +11,21 @@ def boot() -> None:
 
     manager = ModuleManager()
 
-    # Create AnchorCore services.
-    configuration = Configuration()
-    audit = Audit()
-    event_bus = EventBus()
-    health = Health()
+    print("\nDiscovering AnchorCore...\n")
 
-    # Create frameworks and provide their platform dependencies.
-    anchorstack = AnchorStack(audit=audit)
+    core_modules = manager.discover("anchorcore")
 
-    print("\nRegistering AnchorCore...\n")
+    context: dict[str, Module] = {
+        module.name: module
+        for module in core_modules
+    }
 
-    manager.register(configuration)
-    manager.register(audit)
-    manager.register(event_bus)
-    manager.register(health)
+    print("\nDiscovering Frameworks...\n")
 
-    print("\nRegistering Frameworks...\n")
-
-    manager.register(anchorstack)
+    manager.discover(
+        package_name="frameworks",
+        context=context,
+    )
 
     print("\nLoading Platform...\n")
 
@@ -48,6 +40,8 @@ def boot() -> None:
             f"{module['status']} "
             f"(v{module['version']})"
         )
+
+    audit = manager.get("Audit Engine")
 
     print("\nAudit Records")
     print("-" * 40)
