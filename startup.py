@@ -1,5 +1,6 @@
 from anchorcore.audit import Audit
 from anchorcore.eventbus import EventBus
+from anchorcore.health import Health
 from core.module import Module
 from core.module_manager import ModuleManager
 
@@ -24,6 +25,12 @@ def boot() -> None:
 
     audit = context.get("Audit Engine")
     event_bus = context.get("Event Bus")
+    health = context.get("Health Monitor")
+
+    if not isinstance(health, Health):
+        raise RuntimeError(
+            "AnchorOS requires the AnchorCore Health Monitor."
+        )
 
     if not isinstance(audit, Audit):
         raise RuntimeError(
@@ -38,6 +45,11 @@ def boot() -> None:
     event_bus.subscribe(
         event_name="framework.started",
         handler=audit.handle_event,
+    )
+
+    event_bus.subscribe(
+        event_name="framework.started",
+        handler=health.handle_framework_started,
     )
 
     event_bus.subscribe(
@@ -65,6 +77,12 @@ def boot() -> None:
             f"{module['status']} "
             f"(v{module['version']})"
         )
+
+    print("\nFramework States")
+    print("-" * 40)
+
+    for name, status in health.get_framework_states().items():
+        print(f"{name}: {status}")
 
     print("\nAudit Records")
     print("-" * 40)
