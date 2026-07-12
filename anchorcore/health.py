@@ -1,5 +1,4 @@
-from typing import Any
-
+from anchorcore.event import AnchorEvent
 from core.module import Module
 
 
@@ -12,22 +11,17 @@ class Health(Module):
 
     def handle_framework_started(
         self,
-        payload: dict[str, Any],
+        event: AnchorEvent,
     ) -> None:
-        """Record that a framework entered the Running state."""
+        self.framework_states[event.source] = "Running"
 
-        source = str(payload["source"])
-        self.framework_states[source] = "Running"
-
-        print(f"✓ Health: {source} reported Running")
+        print(
+            f"✓ Health: {event.source} reported Running"
+        )
 
     def get_framework_states(self) -> dict[str, str]:
-        """Return known framework states."""
-
         return self.framework_states.copy()
 
 
 def create_module(context: dict) -> Health:
-    """Create the AnchorCore Health Monitor."""
-
     return Health()

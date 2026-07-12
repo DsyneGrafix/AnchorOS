@@ -1,6 +1,4 @@
-from datetime import datetime, timezone
-from typing import Any
-
+from anchorcore.event import AnchorEvent
 from core.module import Module
 
 
@@ -9,42 +7,31 @@ class Audit(Module):
 
     def __init__(self) -> None:
         super().__init__("Audit Engine", "1.0.0")
-        self.records: list[dict[str, str]] = []
+        self.records: list[dict[str, object]] = []
 
-    def log(
-        self,
-        source: str,
-        event: str,
-        message: str,
-    ) -> None:
+    def handle_event(self, event: AnchorEvent) -> None:
+        """Preserve a structured Anchor Event."""
+
         record = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "source": source,
-            "event": event,
-            "message": message,
+            "event_id": event.event_id,
+            "timestamp": event.timestamp,
+            "source": event.source,
+            "event_type": event.event_type,
+            "severity": event.severity,
+            "message": event.message,
+            "payload": event.payload.copy(),
         }
 
         self.records.append(record)
 
         print(
-            f"✓ Audit: [{record['source']}] "
-            f"{record['event']} — {record['message']}"
+            f"✓ Audit: [{event.source}] "
+            f"{event.event_type} — {event.message}"
         )
 
-    def handle_event(self, payload: dict[str, Any]) -> None:
-        """Receive an Event Bus payload and preserve it as an audit record."""
-
-        self.log(
-            source=str(payload["source"]),
-            event=str(payload["event"]),
-            message=str(payload["message"]),
-        )
-
-    def get_records(self) -> list[dict[str, str]]:
-        return self.records.copy()
+    def get_records(self) -> list[dict[str, object]]:
+        return [record.copy() for record in self.records]
 
 
 def create_module(context: dict) -> Audit:
-    """Create the AnchorCore Audit service."""
-
     return Audit()

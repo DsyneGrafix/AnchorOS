@@ -43,17 +43,17 @@ def boot() -> None:
         )
 
     event_bus.subscribe(
-        event_name="framework.started",
+        event_type="framework.started",
         handler=audit.handle_event,
     )
 
     event_bus.subscribe(
-        event_name="framework.started",
+        event_type="framework.started",
         handler=health.handle_framework_started,
     )
 
     event_bus.subscribe(
-        event_name="framework.stopping",
+        event_type="framework.stopping",
         handler=audit.handle_event,
     )
 
@@ -90,8 +90,10 @@ def boot() -> None:
     for record in audit.get_records():
         print(
             f"{record['timestamp']} | "
+            f"{record['event_id']} | "
             f"{record['source']} | "
-            f"{record['event']} | "
+            f"{record['event_type']} | "
+            f"{record['severity']} | "
             f"{record['message']}"
         )
 

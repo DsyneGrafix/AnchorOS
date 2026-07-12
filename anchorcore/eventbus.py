@@ -1,10 +1,10 @@
 from collections.abc import Callable
-from typing import Any
 
+from anchorcore.event import AnchorEvent
 from core.module import Module
 
 
-EventHandler = Callable[[dict[str, Any]], None]
+EventHandler = Callable[[AnchorEvent], None]
 
 
 class EventBus(Module):
@@ -16,30 +16,23 @@ class EventBus(Module):
 
     def subscribe(
         self,
-        event_name: str,
+        event_type: str,
         handler: EventHandler,
     ) -> None:
-        """Subscribe a handler to a named event."""
-
-        handlers = self.subscribers.setdefault(event_name, [])
+        handlers = self.subscribers.setdefault(event_type, [])
 
         if handler not in handlers:
             handlers.append(handler)
 
-    def publish(
-        self,
-        event_name: str,
-        payload: dict[str, Any],
-    ) -> None:
-        """Publish an event to all subscribers."""
+    def publish(self, event: AnchorEvent) -> None:
+        print(
+            f"✓ Event: {event.event_type} "
+            f"[{event.event_id}]"
+        )
 
-        print(f"✓ Event: {event_name}")
-
-        for handler in self.subscribers.get(event_name, []):
-            handler(payload)
+        for handler in self.subscribers.get(event.event_type, []):
+            handler(event)
 
 
 def create_module(context: dict) -> EventBus:
-    """Create the AnchorCore Event Bus."""
-
     return EventBus()
