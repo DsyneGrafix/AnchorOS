@@ -1,8 +1,8 @@
 from anchorcore.audit import Audit
 from anchorcore.eventbus import EventBus
 from anchorcore.health import Health
-from core.module import Module
 from core.module_manager import ModuleManager
+from core.service_registry import ServiceRegistry
 
 
 def boot() -> None:
@@ -13,33 +13,32 @@ def boot() -> None:
     print("=" * 40)
 
     manager = ModuleManager()
+    registry = ServiceRegistry()
 
     print("\nDiscovering AnchorCore...\n")
 
     core_modules = manager.discover("anchorcore")
 
-    context: dict[str, Module] = {
-        module.name: module
-        for module in core_modules
-    }
+    for module in core_modules:
+        registry.register(module)
 
-    audit = context.get("Audit Engine")
-    event_bus = context.get("Event Bus")
-    health = context.get("Health Monitor")
-
-    if not isinstance(health, Health):
-        raise RuntimeError(
-            "AnchorOS requires the AnchorCore Health Monitor."
-        )
+    audit = registry.require("Audit Engine")
+    event_bus = registry.require("Event Bus")
+    health = registry.require("Health Monitor")
 
     if not isinstance(audit, Audit):
         raise RuntimeError(
-            "AnchorOS requires the AnchorCore Audit Engine."
+            "AnchorOS requires a valid Audit Engine."
         )
 
     if not isinstance(event_bus, EventBus):
         raise RuntimeError(
-            "AnchorOS requires the AnchorCore Event Bus."
+            "AnchorOS requires a valid Event Bus."
+        )
+
+    if not isinstance(health, Health):
+        raise RuntimeError(
+            "AnchorOS requires a valid Health Monitor."
         )
 
     event_bus.subscribe(
@@ -61,8 +60,14 @@ def boot() -> None:
 
     manager.discover(
         package_name="frameworks",
-        context=context,
+        context=registry,
     )
+
+    print("\nRegistered Services")
+    print("-" * 40)
+
+    for service_name in registry.list_services():
+        print(f"✓ {service_name}")
 
     print("\nLoading Platform...\n")
 

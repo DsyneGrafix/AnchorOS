@@ -1,8 +1,7 @@
-from typing import Any
-
 from anchorcore.event import AnchorEvent
 from anchorcore.eventbus import EventBus
 from core.module import Module
+from core.service_registry import ServiceRegistry
 
 
 class AnchorStack(Module):
@@ -19,9 +18,7 @@ class AnchorStack(Module):
             AnchorEvent(
                 source=self.name,
                 event_type="framework.started",
-                message=(
-                    "AnchorStack entered the Running state."
-                ),
+                message="AnchorStack entered the Running state.",
                 severity="INFO",
                 payload={
                     "framework_version": self.version,
@@ -35,9 +32,7 @@ class AnchorStack(Module):
             AnchorEvent(
                 source=self.name,
                 event_type="framework.stopping",
-                message=(
-                    "AnchorStack is leaving the Running state."
-                ),
+                message="AnchorStack is leaving the Running state.",
                 severity="INFO",
             )
         )
@@ -46,13 +41,15 @@ class AnchorStack(Module):
 
 
 def create_module(
-    context: dict[str, Any],
+    registry: ServiceRegistry,
 ) -> AnchorStack:
-    event_bus = context.get("Event Bus")
+    """Create AnchorStack using registered platform services."""
+
+    event_bus = registry.require("Event Bus")
 
     if not isinstance(event_bus, EventBus):
         raise RuntimeError(
-            "AnchorStack requires the AnchorCore Event Bus."
+            "Registered Event Bus has an invalid type."
         )
 
     return AnchorStack(event_bus=event_bus)
