@@ -188,6 +188,35 @@ def boot() -> None:
             print(f"✓ {application}")
     else:
         print("None")
+    # --------------------------------------------------
+    # Display operational summary
+    # --------------------------------------------------
+
+    print("\nOperational Summary")
+    print("-" * 40)
+
+    service_count = len(manifest_data["services"])
+    framework_count = len(manifest_data["frameworks"])
+    application_count = len(manifest_data["applications"])
+    audit_count = len(audit.get_records())
+
+    all_modules_running = all(
+        module["status"] == "Running"
+        for module in manager.health_report()
+    )
+
+    platform_status = (
+        "HEALTHY"
+        if all_modules_running
+        else "DEGRADED"
+    )
+
+    print(f"Services      : {service_count}")
+    print(f"Frameworks    : {framework_count}")
+    print(f"Applications  : {application_count}")
+    print(f"Audit Records : {audit_count}")
+    print()
+    print(f"Platform Status: {platform_status}")
 
     # --------------------------------------------------
     # Display audit records
