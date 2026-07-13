@@ -1,3 +1,4 @@
+from banner import print_banner
 from anchorcore.audit import Audit
 from anchorcore.eventbus import EventBus
 from anchorcore.health import Health
@@ -8,12 +9,12 @@ from core.service_registry import ServiceRegistry
 def boot() -> None:
     """Boot the AnchorOS operational platform."""
 
-    print("=" * 40)
-    print("AnchorOS Starting...")
-    print("=" * 40)
+    print_banner()
+    print("\nPlatform Initialization Sequence\n")
 
     manager = ModuleManager()
     registry = ServiceRegistry()
+
 
     print("\nDiscovering AnchorCore...\n")
 
