@@ -3,21 +3,23 @@ from anchorcore.eventbus import EventBus
 from anchorcore.health import Health
 from anchorcore.manifest import PlatformManifest
 from banner import print_banner
+from core.boot_pipeline import BootPipeline
 from core.module_manager import ModuleManager
 from core.service_registry import ServiceRegistry
 
 
 def boot() -> None:
-    """Boot the AnchorOS operational platform."""
+    """Initialize, verify, and report the AnchorOS platform."""
 
     print_banner()
     print("\nPlatform Initialization Sequence\n")
 
     manager = ModuleManager()
     registry = ServiceRegistry()
+    pipeline = BootPipeline()
 
     # --------------------------------------------------
-    # Discover and register AnchorCore services
+    # Discover AnchorCore
     # --------------------------------------------------
 
     print("\nDiscovering AnchorCore...\n")
@@ -28,7 +30,7 @@ def boot() -> None:
         registry.register(module)
 
     # --------------------------------------------------
-    # Resolve required platform services
+    # Resolve required AnchorCore services
     # --------------------------------------------------
 
     audit = registry.require("Audit Engine")
@@ -57,14 +59,14 @@ def boot() -> None:
         )
 
     # --------------------------------------------------
-    # Populate the AnchorCore portion of the manifest
+    # Populate AnchorCore manifest inventory
     # --------------------------------------------------
 
     for service_name in registry.list_services():
         manifest.register_service(service_name)
 
     # --------------------------------------------------
-    # Configure platform event subscriptions
+    # Configure event subscriptions
     # --------------------------------------------------
 
     event_bus.subscribe(
@@ -97,7 +99,7 @@ def boot() -> None:
         manifest.register_framework(framework.name)
 
     # --------------------------------------------------
-    # Display registered platform services
+    # Display registered services
     # --------------------------------------------------
 
     print("\nRegistered Services")
@@ -107,7 +109,7 @@ def boot() -> None:
         print(f"✓ {service_name}")
 
     # --------------------------------------------------
-    # Start the platform
+    # Start platform
     # --------------------------------------------------
 
     print("\nLoading Platform...\n")
@@ -115,13 +117,15 @@ def boot() -> None:
     manager.start_all()
 
     # --------------------------------------------------
-    # Display module health
+    # Health report
     # --------------------------------------------------
+
+    health_data = manager.health_report()
 
     print("\nHealth Report")
     print("-" * 40)
 
-    for module in manager.health_report():
+    for module in health_data:
         print(
             f"{module['name']}: "
             f"{module['status']} "
@@ -129,7 +133,7 @@ def boot() -> None:
         )
 
     # --------------------------------------------------
-    # Display framework states
+    # Framework states
     # --------------------------------------------------
 
     print("\nFramework States")
@@ -144,7 +148,7 @@ def boot() -> None:
         print("No framework states reported.")
 
     # --------------------------------------------------
-    # Display the platform manifest
+    # Platform manifest
     # --------------------------------------------------
 
     manifest_data = manifest.describe()
@@ -178,7 +182,7 @@ def boot() -> None:
         for framework in manifest_data["frameworks"]:
             print(f"✓ {framework}")
     else:
-        print("None")
+        print("No frameworks registered.")
 
     print("\nApplications")
     print("-" * 40)
@@ -187,22 +191,22 @@ def boot() -> None:
         for application in manifest_data["applications"]:
             print(f"✓ {application}")
     else:
-        print("None")
+        print("No applications registered.")
+
     # --------------------------------------------------
-    # Display operational summary
+    # Operational summary
     # --------------------------------------------------
 
-    print("\nOperational Summary")
-    print("-" * 40)
+    audit_records = audit.get_records()
 
     service_count = len(manifest_data["services"])
     framework_count = len(manifest_data["frameworks"])
     application_count = len(manifest_data["applications"])
-    audit_count = len(audit.get_records())
+    audit_count = len(audit_records)
 
     all_modules_running = all(
         module["status"] == "Running"
-        for module in manager.health_report()
+        for module in health_data
     )
 
     platform_status = (
@@ -210,6 +214,9 @@ def boot() -> None:
         if all_modules_running
         else "DEGRADED"
     )
+
+    print("\nOperational Summary")
+    print("-" * 40)
 
     print(f"Services      : {service_count}")
     print(f"Frameworks    : {framework_count}")
@@ -219,13 +226,11 @@ def boot() -> None:
     print(f"Platform Status: {platform_status}")
 
     # --------------------------------------------------
-    # Display audit records
+    # Audit records
     # --------------------------------------------------
 
     print("\nAudit Records")
     print("-" * 40)
-
-    audit_records = audit.get_records()
 
     if audit_records:
         for record in audit_records:
@@ -241,7 +246,53 @@ def boot() -> None:
         print("No audit records.")
 
     # --------------------------------------------------
-    # Complete initialization
+    # Verify Boot Pipeline
+    # --------------------------------------------------
+
+    print("\nBoot Pipeline Verification")
+    print("-" * 40)
+
+    pipeline_results = pipeline.execute()
+
+    passed_stages = sum(
+        result.success
+        for result in pipeline_results
+    )
+
+    total_stages = len(pipeline.stages)
+
+    pipeline_passed = (
+        pipeline.summary()
+        and passed_stages == total_stages
+    )
+
+    print("-" * 40)
+    print(
+        "Pipeline Result : "
+        f"{'PASS' if pipeline_passed else 'FAIL'}"
+    )
+    print(
+        f"Stages Passed   : "
+        f"{passed_stages} / {total_stages}"
+    )
+    print(
+        "Overall Status  : "
+        f"{'VERIFIED' if pipeline_passed else 'FAILED'}"
+    )
+
+    if not pipeline_passed:
+        raise RuntimeError(
+            "AnchorOS Boot Pipeline verification failed."
+        )
+
+    if not all_modules_running:
+        raise RuntimeError(
+            "AnchorOS cannot declare operational status "
+            "while one or more modules are not running."
+        )
+
+    # --------------------------------------------------
+    # Declare operational state
     # --------------------------------------------------
 
     print("\n" + "=" * 58)
