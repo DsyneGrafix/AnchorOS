@@ -5,20 +5,19 @@ from core.module import Module
 from core.service_registry import ServiceRegistry
 
 
-class AnchorFiber(Module):
-    """AnchorFiber infrastructure framework."""
+class AnchorHealth(Module):
+    """AnchorHealth healthcare-operations framework."""
 
     def __init__(self, event_bus: EventBus) -> None:
-        super().__init__("AnchorFiber", "0.1.0")
-
+        super().__init__("AnchorHealth", "0.1.0")
         self.event_bus = event_bus
 
         self.identity = FrameworkIdentity(
             name=self.name,
-            description="Fiber Infrastructure Intelligence",
-            motto="Know the Network. Trust the Route.",
+            description="Healthcare Operational Intelligence",
+            motto="Protect the Patient. Validate the Decision.",
             version=self.version,
-            status="Operational Skeleton",
+            status="Commissioned Skeleton",
         )
 
     def start(self) -> None:
@@ -28,7 +27,7 @@ class AnchorFiber(Module):
             AnchorEvent(
                 source=self.name,
                 event_type="framework.started",
-                message="AnchorFiber entered the Running state.",
+                message="AnchorHealth entered the Running state.",
                 severity="INFO",
                 payload={
                     "framework_version": self.version,
@@ -44,7 +43,7 @@ class AnchorFiber(Module):
             AnchorEvent(
                 source=self.name,
                 event_type="framework.stopping",
-                message="AnchorFiber is leaving the Running state.",
+                message="AnchorHealth is leaving the Running state.",
                 severity="INFO",
             )
         )
@@ -54,8 +53,8 @@ class AnchorFiber(Module):
 
 def create_module(
     registry: ServiceRegistry,
-) -> AnchorFiber:
-    """Create AnchorFiber using registered platform services."""
+) -> AnchorHealth:
+    """Create AnchorHealth using registered platform services."""
 
     event_bus = registry.require("Event Bus")
 
@@ -64,4 +63,4 @@ def create_module(
             "Registered Event Bus has an invalid type."
         )
 
-    return AnchorFiber(event_bus=event_bus)
+    return AnchorHealth(event_bus=event_bus)

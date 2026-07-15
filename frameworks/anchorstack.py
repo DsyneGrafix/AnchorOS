@@ -1,5 +1,6 @@
 from anchorcore.event import AnchorEvent
 from anchorcore.eventbus import EventBus
+from core.framework_identity import FrameworkIdentity
 from core.module import Module
 from core.service_registry import ServiceRegistry
 
@@ -9,7 +10,19 @@ class AnchorStack(Module):
 
     def __init__(self, event_bus: EventBus) -> None:
         super().__init__("AnchorStack", "1.0.0")
+
         self.event_bus = event_bus
+
+        self.identity = FrameworkIdentity(
+            name=self.name,
+            description="Operational Governance Framework",
+            motto=(
+                "Execution must never outlive the conditions "
+                "that justified it."
+            ),
+            version=self.version,
+            status="Operational",
+        )
 
     def start(self) -> None:
         super().start()
@@ -26,6 +39,8 @@ class AnchorStack(Module):
                 },
             )
         )
+
+        self.identity.display()
 
     def stop(self) -> None:
         self.event_bus.publish(
