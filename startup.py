@@ -292,6 +292,40 @@ def boot() -> None:
         )
 
     # --------------------------------------------------
+    # Lifecycle report
+    # --------------------------------------------------
+
+    lifecycle_states = manager.lifecycle_report()
+
+    print("\nLifecycle Report")
+    print("-" * 40)
+
+    if lifecycle_states:
+        for name, state in lifecycle_states.items():
+            print(f"{name}: {state}")
+    else:
+        print("No lifecycle states reported.")
+
+    lifecycle_verified = (
+        bool(lifecycle_states)
+        and all(
+            state == "Running"
+            for state in lifecycle_states.values()
+        )
+    )
+
+    print()
+    print(
+        "Lifecycle Manager: "
+        f"{'VERIFIED' if lifecycle_verified else 'FAILED'}"
+    )
+
+    if not lifecycle_verified:
+        raise RuntimeError(
+            "AnchorOS lifecycle verification failed."
+        )
+
+    # --------------------------------------------------
     # Declare operational state
     # --------------------------------------------------
 

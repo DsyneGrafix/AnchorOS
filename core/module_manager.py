@@ -1,6 +1,7 @@
 import importlib
 import pkgutil
 
+from core.lifecycle_manager import LifecycleManager
 from core.module import Module
 
 
@@ -9,6 +10,7 @@ class ModuleManager:
 
     def __init__(self) -> None:
         self.modules: dict[str, Module] = {}
+        self.lifecycle = LifecycleManager()
 
     def register(self, module: Module) -> None:
         """Register a verified AnchorOS module."""
@@ -24,7 +26,11 @@ class ModuleManager:
                 f"Module already registered: {module.name}"
             )
 
+        self.lifecycle.discover(module)
+        self.lifecycle.register(module)
+
         self.modules[module.name] = module
+
         print(f"✓ Registered: {module.name}")
 
     def discover(
@@ -82,14 +88,14 @@ class ModuleManager:
         """Start every registered module."""
 
         for module in self.modules.values():
-            module.start()
+            self.lifecycle.start(module)
             print(f"✓ Started: {module.name}")
 
     def stop_all(self) -> None:
         """Stop every registered module."""
 
         for module in reversed(list(self.modules.values())):
-            module.stop()
+            self.lifecycle.stop(module)
             print(f"✓ Stopped: {module.name}")
 
     def health_report(self) -> list[dict[str, str]]:
@@ -99,6 +105,14 @@ class ModuleManager:
             module.health()
             for module in self.modules.values()
         ]
+
+    def lifecycle_report(self) -> dict[str, str]:
+        """Return lifecycle state for all registered modules."""
+
+        return {
+            name: state.value
+            for name, state in self.lifecycle.report().items()
+        }
 
     def get(self, name: str) -> Module:
         """Retrieve a registered module by name."""
