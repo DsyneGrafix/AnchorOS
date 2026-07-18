@@ -1,0 +1,38 @@
+{
+  "service_id": "AOS-SVC-ANCHORINTEL-API",
+  "name": "AnchorIntel API",
+  "version": "0.1.0",
+  "platform": "AnchorOS",
+  "framework": "AnchorIntel",
+  "entrypoint": "anchorintel_api.anchoros:AnchorIntelAnchorOSService",
+  "capabilities": [
+    "opportunity.lifecycle.manage",
+    "evidence.classify",
+    "evidence.verify",
+    "spatial.assessment.run",
+    "assessment.report.json",
+    "assessment.report.markdown",
+    "opportunity.review.due",
+    "opportunity.revalidate",
+    "audit.read"
+  ],
+  "dependencies": [
+    "spatial-opportunity-engine>=0.1.0"
+  ],
+  "persistence": {
+    "type": "sqlite",
+    "default_path": "data/anchorintel.db"
+  },
+  "network": {
+    "default_host": "127.0.0.1",
+    "default_port": 8080,
+    "api_prefix": "/v1"
+  },
+  "lifecycle": {
+    "register": "register",
+    "start": "start",
+    "stop": "stop",
+    "health": "health"
+  }
+}
+

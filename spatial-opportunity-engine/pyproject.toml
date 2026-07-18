@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spatial-opportunity-engine"
+version = "0.1.0"
+description = "Evidence-first infrastructure opportunity intelligence engine implementing SIO-001 S.P.A.T.I.A.L."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Proprietary"}
+authors = [{name = "Sirius Logic Systems"}]
+dependencies = []
+
+[project.scripts]
+spatial-engine = "spatial_engine.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["spatial_engine*"]
+

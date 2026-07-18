@@ -1,0 +1,257 @@
+{
+  "assessment_date": "2026-07-18",
+  "assumptions": [
+    {
+      "claim": "The proposed corridor has usable public right-of-way.",
+      "evidence_id": "E-004",
+      "geography": "",
+      "material": true,
+      "notes": "Rights-of-way review has not been completed.",
+      "retrieved_date": "",
+      "source": "",
+      "source_date": "",
+      "staleness_risk": "",
+      "state": "A"
+    }
+  ],
+  "confidence": "Moderate",
+  "confidence_index": 0.57,
+  "dimensions": [
+    {
+      "evidence_refs": [
+        "E-001",
+        "E-002"
+      ],
+      "key": "problem_evidence",
+      "label": "Problem evidence and consequence",
+      "rationale": "The adopted plan verifies the capacity problem; outage consequence needs additional operational evidence.",
+      "score": 4.0,
+      "weight": 15,
+      "weighted_points": 12.0
+    },
+    {
+      "evidence_refs": [
+        "E-003"
+      ],
+      "key": "authority_clarity",
+      "label": "Customer, actor, and authority clarity",
+      "rationale": "A plausible public sponsor is visible, but buyer and final approval authority are not verified.",
+      "score": 3.0,
+      "weight": 15,
+      "weighted_points": 9.0
+    },
+    {
+      "evidence_refs": [
+        "E-002",
+        "E-004"
+      ],
+      "key": "technical_fit",
+      "label": "Technical and temporal fit",
+      "rationale": "A redundant fiber route is plausible, subject to route ownership, field, and right-of-way validation.",
+      "score": 3.0,
+      "weight": 15,
+      "weighted_points": 9.0
+    },
+    {
+      "evidence_refs": [
+        "E-005"
+      ],
+      "key": "funding_path",
+      "label": "Funding and procurement path",
+      "rationale": "A funding path has not yet been connected to a verified eligible applicant and scope.",
+      "score": 2.0,
+      "weight": 15,
+      "weighted_points": 6.0
+    },
+    {
+      "evidence_refs": [
+        "E-001",
+        "E-002"
+      ],
+      "key": "strategic_alignment",
+      "label": "Strategic alignment",
+      "rationale": "The assessment fits AnchorFiber asset, route, dependency, and opportunity-intelligence capabilities.",
+      "score": 4.0,
+      "weight": 15,
+      "weighted_points": 12.0
+    },
+    {
+      "evidence_refs": [
+        "E-001",
+        "E-002"
+      ],
+      "key": "differentiated_advantage",
+      "label": "Differentiated advantage",
+      "rationale": "Evidence-linked opportunity analysis and route-dependency modeling offer a bounded differentiator.",
+      "score": 3.5,
+      "weight": 10,
+      "weighted_points": 7.0
+    },
+    {
+      "evidence_refs": [
+        "E-003"
+      ],
+      "key": "delivery_readiness",
+      "label": "Delivery readiness",
+      "rationale": "The intelligence assessment is deliverable, but engineering and deployment partners are not named.",
+      "score": 2.5,
+      "weight": 10,
+      "weighted_points": 5.0
+    },
+    {
+      "evidence_refs": [
+        "E-004",
+        "E-005"
+      ],
+      "key": "risk_position",
+      "label": "Risk and uncertainty position",
+      "rationale": "The largest uncertainties are explicit and can be tested, but funding and right-of-way remain material.",
+      "score": 2.5,
+      "weight": 5,
+      "weighted_points": 2.5
+    }
+  ],
+  "engine_version": "0.1.0",
+  "evidence_counts": {
+    "A": 1,
+    "D": 0,
+    "S": 2,
+    "U": 1,
+    "V": 1
+  },
+  "facts": [
+    {
+      "claim": "The county plan identifies inadequate broadband capacity in the eastern service area.",
+      "evidence_id": "E-001",
+      "geography": "Eastern Example County",
+      "material": true,
+      "notes": "",
+      "retrieved_date": "2026-07-18",
+      "source": "Example County adopted infrastructure plan",
+      "source_date": "2026-04-10",
+      "staleness_risk": "Low",
+      "state": "V"
+    }
+  ],
+  "fatal_constraints": [],
+  "gates": {
+    "A1": {
+      "evidence_refs": [
+        "E-003"
+      ],
+      "rationale": "A sponsor is plausible, but procurement and approval authority require confirmation.",
+      "status": "provisional"
+    },
+    "A2": {
+      "evidence_refs": [
+        "E-001",
+        "E-002"
+      ],
+      "rationale": "A bounded AnchorFiber intelligence role is defined without assuming engineering authority.",
+      "status": "pass"
+    },
+    "I": {
+      "evidence_refs": [
+        "E-005"
+      ],
+      "rationale": "Funding availability and eligibility are unverified.",
+      "status": "provisional"
+    },
+    "L": {
+      "evidence_refs": [],
+      "rationale": "Owner, next action, resource ceiling, and review date are defined.",
+      "status": "pass"
+    },
+    "P": {
+      "evidence_refs": [
+        "E-001",
+        "E-002"
+      ],
+      "rationale": "A capacity and route-resilience problem with operational consequences is supported.",
+      "status": "pass"
+    },
+    "S": {
+      "evidence_refs": [
+        "E-001",
+        "E-002"
+      ],
+      "rationale": "The geography, infrastructure condition, and affected facilities are bounded.",
+      "status": "pass"
+    },
+    "T": {
+      "evidence_refs": [
+        "E-002",
+        "E-004"
+      ],
+      "rationale": "No fatal technical constraint is known; route and right-of-way validation remain open.",
+      "status": "provisional"
+    }
+  },
+  "inferences": [
+    {
+      "claim": "Three critical facilities appear to share one upstream transport route.",
+      "evidence_id": "E-002",
+      "geography": "Eastern Example County",
+      "material": true,
+      "notes": "Requires owner confirmation and field validation.",
+      "retrieved_date": "2026-07-18",
+      "source": "Public route maps and facility records",
+      "source_date": "2026-06-01",
+      "staleness_risk": "",
+      "state": "S"
+    },
+    {
+      "claim": "A county department could sponsor a feasibility assessment.",
+      "evidence_id": "E-003",
+      "geography": "Example County",
+      "material": true,
+      "notes": "",
+      "retrieved_date": "2026-07-18",
+      "source": "County capital-planning minutes",
+      "source_date": "2026-06-22",
+      "staleness_risk": "",
+      "state": "S"
+    }
+  ],
+  "known_limitations": [
+    "This example uses fictional entities and is not a real market finding.",
+    "Route topology has not been confirmed by an asset owner.",
+    "No field survey, preliminary engineering, or funding eligibility review has been completed."
+  ],
+  "lifecycle": {
+    "next_action": "Confirm sponsor authority, route ownership, and funding eligibility through a bounded discovery review.",
+    "owner": "AnchorFiber opportunity lead",
+    "resource_ceiling": "Eight analyst hours; no proposal or engineering spend authorized",
+    "revalidation_triggers": [
+      "Sponsor authority is confirmed or denied",
+      "Route ownership or topology changes",
+      "A relevant funding notice is issued",
+      "Evidence becomes more than 90 days old"
+    ],
+    "review_date": "2026-08-15"
+  },
+  "methodology": "SIO-001 v0.1",
+  "opportunity_id": "SIO-2026-001",
+  "provisional": true,
+  "recommendation": "Monitor",
+  "recommendation_reason": "A real signal exists, but the opportunity is not ready for pursuit resources.",
+  "score": 62.5,
+  "title": "Example Rural Middle-Mile Resilience Opportunity",
+  "unknowns_or_disputes": [
+    {
+      "claim": "The project is eligible for a currently available funding program.",
+      "evidence_id": "E-005",
+      "geography": "",
+      "material": true,
+      "notes": "Program eligibility and application authority remain unconfirmed.",
+      "retrieved_date": "",
+      "source": "",
+      "source_date": "",
+      "staleness_risk": "",
+      "state": "U"
+    }
+  ],
+  "warnings": [
+    "One or more mandatory gates remain provisional."
+  ]
+}
