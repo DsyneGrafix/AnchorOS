@@ -124,6 +124,7 @@ def opportunity_detail(
     knowledge_reviews: Iterable[dict[str, Any]] = (),
     knowledge_modules: Iterable[dict[str, Any]] = (),
     assessments: Iterable[dict[str, Any]] = (),
+    dossiers: Iterable[dict[str, Any]] = (),
 ) -> str:
     archived = bool(record.get("archived"))
     evidence_items = list(evidence_records)
@@ -186,6 +187,17 @@ def opportunity_detail(
     run_assessment = ""
     if not archived and record.get("current_knowledge_review"):
         run_assessment = f'<a class="button" href="/opportunities/{quote(str(record["opportunity_id"]))}/assessments/new">Run S.P.A.T.I.A.L.</a>'
+    dossier_items = list(dossiers)
+    dossier_rows = "".join(
+        f"""<tr><td><a class="record-title" href="/opportunities/{quote(str(record['opportunity_id']))}/dossiers/{quote(str(item['dossier_id']))}">{_text(item.get('dossier_id'))}</a></td>
+        <td><span class="badge{' archived' if item.get('stale') else ''}">{'Stale' if item.get('stale') else _text(item.get('document', {}).get('executive_summary', {}).get('assessment_recommendation'))}</span></td>
+        <td>{_text(item.get('assessment_id'))}</td><td>{_text(item.get('knowledge_review_id'))}</td><td>v{_text(item.get('format_version'))}</td>
+        <td class="meta">{_text(item.get('created_at'))}</td><td><a href="/opportunities/{quote(str(record['opportunity_id']))}/dossiers/{quote(str(item['dossier_id']))}">View</a></td></tr>"""
+        for item in dossier_items
+    ) or '<tr><td class="empty" colspan="7">No Executive Opportunity Dossier has been generated.</td></tr>'
+    generate_dossier = ""
+    if not archived and record.get("current_assessment"):
+        generate_dossier = f'<a class="button" href="/opportunities/{quote(str(record["opportunity_id"]))}/dossiers/new">Generate Executive Dossier</a>'
     return _layout(
         str(record.get("title", "Opportunity")),
         f"""<div class="eyebrow">{_text(record.get('opportunity_id'))} · {'Reference opportunity' if record.get('reference_record') else 'Opportunity record'}</div>
@@ -221,6 +233,10 @@ def opportunity_detail(
         <section class="card table-wrap" style="margin-top:22px">
           <div class="section-head"><div><h2>S.P.A.T.I.A.L. Assessments</h2><div class="meta">{len(assessment_items)} persisted assessment{'s' if len(assessment_items) != 1 else ''}; stale results do not complete the lifecycle.</div></div>{run_assessment}</div>
           <table><thead><tr><th>ID</th><th>Recommendation</th><th>Score</th><th>Confidence</th><th>Risk</th><th>Review</th><th>Executed</th><th></th></tr></thead><tbody>{assessment_rows}</tbody></table>
+        </section>
+        <section class="card table-wrap" style="margin-top:22px">
+          <div class="section-head"><div><h2>Executive Opportunity Dossiers</h2><div class="meta">{len(dossier_items)} persisted dossier{'s' if len(dossier_items) != 1 else ''}; stale artifacts remain replayable but do not complete the lifecycle.</div></div>{generate_dossier}</div>
+          <table><thead><tr><th>ID</th><th>Recommendation</th><th>Assessment</th><th>Review</th><th>Format</th><th>Generated</th><th></th></tr></thead><tbody>{dossier_rows}</tbody></table>
         </section>""",
     )
 
@@ -550,6 +566,105 @@ def spatial_assessment_detail(
         {_review_section('Warnings', result.get('warnings', []), 'None recorded')}
         <h2 style="margin-top:24px">Evidence trace</h2><div class="table-wrap"><table><thead><tr><th>Evidence ID</th><th>Revision</th><th>Status</th><th>Confidence</th><th>SHA-256</th></tr></thead><tbody>{trace_rows}</tbody></table></div>
         <div class="notice" style="margin-top:24px"><strong>Bounded execution:</strong> {_text(result.get('explanation', {}).get('input_derivation', {}).get('bounded_input_notice'))}</div></section>""",
+    )
+
+
+def dossier_form(
+    opportunity: dict[str, Any], readiness: dict[str, Any]
+) -> str:
+    opportunity_id = str(opportunity["opportunity_id"])
+    assessment = readiness.get("assessment") or {}
+    review = readiness.get("knowledge_review") or {}
+    errors = readiness.get("errors", [])
+    warnings = readiness.get("warnings", [])
+    state = "Ready" if readiness.get("ready") else "Not ready"
+    run_button = (
+        '<button type="submit">Generate Executive Dossier</button>'
+        if readiness.get("ready")
+        else '<button type="button" disabled>Generation unavailable</button>'
+    )
+    return _layout(
+        f"Generate dossier for {opportunity_id}",
+        f"""<div class="eyebrow">Reporting Service · Executive Opportunity Dossier</div><h1>Generate Executive Dossier</h1>
+        <p class="lede">Create a deterministic HTML, PDF, and JSON report from the current persisted lifecycle records.</p>
+        <div class="notice"><strong>Bounded generation.</strong> {_text(readiness.get('bounded_execution_notice'))}</div>
+        <div class="grid"><section class="card"><h2>Generation inputs</h2><dl class="facts">
+        <div><dt>Opportunity</dt><dd>{_text(opportunity_id)} · rev {_text(opportunity.get('revision'))}</dd></div>
+        <div><dt>Assessment</dt><dd>{_text(assessment.get('assessment_id'))}</dd></div>
+        <div><dt>Knowledge Review</dt><dd>{_text(review.get('review_id'))}</dd></div>
+        <div><dt>Knowledge Module</dt><dd>{_text(review.get('module_id'))} v{_text(review.get('module_version'))}</dd></div>
+        <div><dt>Active evidence</dt><dd>{_text(readiness.get('active_evidence_count'), '0')}</dd></div>
+        <div><dt>Dossier format</dt><dd>v{_text(readiness.get('format_version'))}</dd></div></dl>
+        <h2 style="margin-top:24px">Input hash</h2><p class="hash">{_text(readiness.get('input_hash'))}</p></section>
+        <aside class="card"><h2>Readiness</h2><p><span class="badge{' archived' if errors else ''}">{state}</span></p>
+        {_review_section('Blocking conditions', errors, 'None')}{_review_section('Warnings', warnings, 'None')}</aside></div>
+        <form method="post" action="/opportunities/{quote(opportunity_id)}/dossiers"><div class="toolbar">{run_button}<a class="button secondary" href="/opportunities/{quote(opportunity_id)}">Cancel</a></div></form>""",
+    )
+
+
+def dossier_detail(
+    opportunity: dict[str, Any], dossier: dict[str, Any], notice: str = ""
+) -> str:
+    opportunity_id = str(opportunity["opportunity_id"])
+    dossier_id = str(dossier["dossier_id"])
+    document = dossier.get("document", {})
+    executive = document.get("executive_summary", {})
+    opportunity_summary = document.get("opportunity_summary", {})
+    evidence = document.get("evidence_summary", {})
+    review = document.get("knowledge_review_summary", {})
+    assessment = document.get("spatial_assessment_summary", {})
+    replay = document.get("replay_information", {})
+    stale = bool(dossier.get("stale"))
+    notice_html = f'<div class="notice">{escape(notice)}</div>' if notice else ""
+    stale_panel = (
+        _review_section("Staleness", dossier.get("stale_reasons", []), "Current")
+        if stale
+        else '<div class="notice"><strong>Current dossier.</strong> Its persisted opportunity, evidence, Knowledge Review, and assessment provenance still match.</div>'
+    )
+    evidence_rows = "".join(
+        f"<tr><td>{_text(item.get('evidence_id'))}</td><td>{_text(item.get('title'))}</td><td>{_text(item.get('status'))}</td><td>{_text(item.get('confidence'))}</td><td>{_text(item.get('revision'))}</td></tr>"
+        for item in evidence.get("records", [])
+    ) or '<tr><td class="empty" colspan="5">No active evidence was summarized.</td></tr>'
+    finding_rows = "".join(
+        f"<tr><td>{_text(item.get('id'))}</td><td>{_text(item.get('disposition'))}</td><td>{_text(item.get('finding'))}</td><td>{_text(', '.join(item.get('evidence_ids', [])))}</td></tr>"
+        for item in review.get("findings", [])
+    ) or '<tr><td class="empty" colspan="4">No findings were summarized.</td></tr>'
+    gate_rows = "".join(
+        f"<tr><td>{_text(key)}</td><td><span class=\"badge{' archived' if value.get('status') == 'fail' else ''}\">{_text(value.get('status'))}</span></td><td>{_text(value.get('rationale'))}</td></tr>"
+        for key, value in assessment.get("gate_results", {}).items()
+    )
+    assumptions = [item.get("statement", "") for item in review.get("assumptions", [])]
+    unknowns = [item.get("statement", "") for item in review.get("unknowns", [])]
+    missing = [
+        f"{item.get('category', '')}: {item.get('reason', '')}"
+        for item in review.get("missing_evidence", [])
+    ]
+    return _layout(
+        dossier_id,
+        f"""<div class="eyebrow">{_text(dossier_id)} · Executive Opportunity Dossier</div><h1>{_text(executive.get('opportunity'))}</h1>
+        <p class="lede">{_text(executive.get('customer'))} · {_text(executive.get('sector'))} · {_text(executive.get('geography'))}</p>
+        <div class="toolbar"><a class="button secondary" href="/opportunities/{quote(opportunity_id)}">← Opportunity</a>
+        <a class="button" href="/opportunities/{quote(opportunity_id)}/dossiers/{quote(dossier_id)}/html">Download HTML</a>
+        <a class="button" href="/opportunities/{quote(opportunity_id)}/dossiers/{quote(dossier_id)}/pdf">Download PDF</a>
+        <a class="button" href="/opportunities/{quote(opportunity_id)}/dossiers/{quote(dossier_id)}/json">Download JSON</a>
+        <form method="post" action="/opportunities/{quote(opportunity_id)}/dossiers/{quote(dossier_id)}/replay"><button type="submit">Replay dossier</button></form>
+        <span class="badge{' archived' if stale else ''}">{'Stale' if stale else 'Current'}</span></div>{notice_html}{stale_panel}
+        <div class="grid"><section class="card"><h2>Executive summary</h2><p class="description">{_text(executive.get('summary'))}</p><dl class="facts">
+        <div><dt>Recommendation</dt><dd>{_text(executive.get('assessment_recommendation'))}</dd></div><div><dt>Score</dt><dd>{_text(executive.get('overall_score'))}/100</dd></div>
+        <div><dt>Confidence</dt><dd>{_text(executive.get('confidence'))}</dd></div><div><dt>Current status</dt><dd>{_text(executive.get('current_status'))}</dd></div></dl></section>
+        <aside class="card"><h2>Artifact identity</h2><dl class="facts"><div><dt>Dossier</dt><dd>{_text(dossier_id)}</dd></div><div><dt>Format</dt><dd>v{_text(dossier.get('format_version'))}</dd></div>
+        <div><dt>Assessment</dt><dd><a href="/opportunities/{quote(opportunity_id)}/assessments/{quote(str(dossier.get('assessment_id','')))}">{_text(dossier.get('assessment_id'))}</a></dd></div>
+        <div><dt>Knowledge Review</dt><dd><a href="/opportunities/{quote(opportunity_id)}/knowledge-reviews/{quote(str(dossier.get('knowledge_review_id','')))}">{_text(dossier.get('knowledge_review_id'))}</a></dd></div>
+        <div><dt>Generated</dt><dd>{_text(dossier.get('created_at'))}</dd></div><div><dt>State time</dt><dd>{_text(document.get('report_state_timestamp'))}</dd></div></dl></aside></div>
+        <section class="card" style="margin-top:22px"><h2>Opportunity summary</h2><dl class="facts"><div><dt>Opportunity ID</dt><dd>{_text(opportunity_summary.get('opportunity_id'))}</dd></div><div><dt>Organization</dt><dd>{_text(opportunity_summary.get('organization'))}</dd></div><div><dt>Infrastructure class</dt><dd>{_text(opportunity_summary.get('infrastructure_class'))}</dd></div><div><dt>Revision</dt><dd>{_text(opportunity_summary.get('revision'))}</dd></div></dl><p>{_text(opportunity_summary.get('description'))}</p>
+        <h2 style="margin-top:24px">Evidence summary</h2><div class="table-wrap"><table><thead><tr><th>ID</th><th>Title</th><th>Status</th><th>Confidence</th><th>Revision</th></tr></thead><tbody>{evidence_rows}</tbody></table></div>
+        <h2 style="margin-top:24px">Knowledge Review summary</h2><p>{_text(review.get('review_id'))} · {_text(review.get('module_id'))} v{_text(review.get('module_version'))}</p><div class="table-wrap"><table><thead><tr><th>ID</th><th>Disposition</th><th>Finding</th><th>Evidence</th></tr></thead><tbody>{finding_rows}</tbody></table></div>
+        {_review_section('Assumptions', assumptions, 'None recorded')}{_review_section('Unknowns', unknowns, 'None recorded')}{_review_section('Missing Evidence', missing, 'None recorded')}
+        <h2 style="margin-top:24px">S.P.A.T.I.A.L. assessment summary</h2><dl class="facts"><div><dt>Assessment</dt><dd>{_text(assessment.get('assessment_id'))}</dd></div><div><dt>Engine</dt><dd>v{_text(assessment.get('engine_version'))}</dd></div><div><dt>Recommendation</dt><dd>{_text(assessment.get('recommendation'))}</dd></div><div><dt>Risk</dt><dd>{_text(assessment.get('risk_profile', {}).get('level'))}</dd></div></dl><p>{_text(assessment.get('explanation', {}).get('engine'))}</p>
+        <div class="table-wrap"><table><thead><tr><th>Gate</th><th>Status</th><th>Rationale</th></tr></thead><tbody>{gate_rows}</tbody></table></div>
+        <h2 style="margin-top:24px">Traceability</h2><p class="hash">{_text(document.get('traceability', {}).get('display'))}</p>
+        <h2 style="margin-top:24px">Replay information</h2><dl class="facts"><div><dt>Dossier replay hash</dt><dd class="hash">{_text(replay.get('replay_hash'))}</dd></div><div><dt>Input hash</dt><dd class="hash">{_text(replay.get('input_hash'))}</dd></div><div><dt>Assessment replay hash</dt><dd class="hash">{_text(replay.get('assessment_replay_hash'))}</dd></div><div><dt>Engine input hash</dt><dd class="hash">{_text(replay.get('engine_input_hash'))}</dd></div></dl>
+        <div class="notice" style="margin-top:24px">{_text(' '.join(document.get('footer', [])))}</div></section>""",
     )
 
 

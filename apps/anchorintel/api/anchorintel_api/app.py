@@ -15,6 +15,8 @@ from .errors import ApiError
 from .openapi import build_openapi
 from .service import AnchorIntelService
 from .web import (
+    dossier_detail,
+    dossier_form,
     error_page,
     evidence_detail,
     evidence_form,
@@ -198,7 +200,7 @@ class AnchorIntelApplication:
         if method == "GET" and path == "/":
             return Response.redirect("/opportunities")
         if method == "GET" and path == "/health":
-            return Response.json(200, {"status": "ok", "service": "anchorintel-api", "version": "0.4.0"})
+            return Response.json(200, {"status": "ok", "service": "anchorintel-api", "version": "0.5.0"})
         if method == "GET" and path == "/v1/openapi.json":
             return Response.json(200, build_openapi())
 
@@ -619,6 +621,116 @@ class AnchorIntelApplication:
                 "text/html; charset=utf-8",
             )
 
+        match = re.fullmatch(r"/opportunities/([^/]+)/dossiers/new", path)
+        if match and method == "GET":
+            opportunity_id = match.group(1)
+            return Response.text(
+                200,
+                dossier_form(
+                    self.service.get_opportunity(opportunity_id),
+                    self.service.dossier_readiness(opportunity_id),
+                ),
+                "text/html; charset=utf-8",
+            )
+
+        match = re.fullmatch(r"/opportunities/([^/]+)/dossiers", path)
+        if match:
+            opportunity_id = match.group(1)
+            if method == "GET":
+                records = self.service.list_dossiers(opportunity_id)
+                if self._business_json_request(method, headers):
+                    return Response.json(200, {"items": records})
+                return Response.text(
+                    200,
+                    opportunity_detail(
+                        self.service.get_opportunity(opportunity_id),
+                        self.service.list_managed_evidence(
+                            opportunity_id, include_archived=True
+                        ),
+                        knowledge_reviews=self.service.list_knowledge_reviews(
+                            opportunity_id
+                        ),
+                        knowledge_modules=self.service.list_knowledge_modules(),
+                        assessments=self.service.list_operational_assessments(
+                            opportunity_id
+                        ),
+                        dossiers=records,
+                    ),
+                    "text/html; charset=utf-8",
+                )
+            if method == "POST":
+                content_type = headers.get("content-type", "").lower()
+                request = (
+                    self._json_body(body)
+                    if "application/json" in content_type
+                    else self._form_body(body)
+                )
+                result = self.service.generate_dossier(
+                    opportunity_id,
+                    "anchorintel-ui" if actor == "anonymous" else actor,
+                    str(request.get("assessment_id", "")).strip() or None,
+                )
+                location = (
+                    f"/opportunities/{opportunity_id}/dossiers/"
+                    f"{result['dossier_id']}"
+                )
+                if "application/json" in content_type or self._business_json_request(
+                    method, headers
+                ):
+                    return Response.json(201, result, {"Location": location})
+                return Response.redirect(location)
+
+        match = re.fullmatch(
+            r"/opportunities/([^/]+)/dossiers/([^/]+)/replay", path
+        )
+        if match and method == "POST":
+            opportunity_id, dossier_id = match.groups()
+            replay = self.service.replay_dossier(
+                opportunity_id,
+                dossier_id,
+                "anchorintel-ui" if actor == "anonymous" else actor,
+            )
+            if self._business_json_request(method, headers):
+                return Response.json(200, replay)
+            state = "matched" if replay["match"] else "did+not+match"
+            return Response.redirect(
+                f"/opportunities/{opportunity_id}/dossiers/{dossier_id}"
+                f"?notice=Replay+{state}+all+stored+artifacts"
+            )
+
+        match = re.fullmatch(
+            r"/opportunities/([^/]+)/dossiers/([^/]+)/(html|pdf|json)", path
+        )
+        if match and method == "GET":
+            opportunity_id, dossier_id, artifact = match.groups()
+            payload, content_type, filename = self.service.dossier_artifact(
+                opportunity_id, dossier_id, artifact
+            )
+            return Response.binary(
+                200,
+                payload,
+                content_type,
+                {
+                    "Content-Disposition": f'attachment; filename="{filename}"',
+                },
+            )
+
+        match = re.fullmatch(r"/opportunities/([^/]+)/dossiers/([^/]+)", path)
+        if match and method == "GET":
+            opportunity_id, dossier_id = match.groups()
+            result = self.service.get_dossier(opportunity_id, dossier_id)
+            if self._business_json_request(method, headers):
+                return Response.json(200, result)
+            return Response.text(
+                200,
+                dossier_detail(
+                    self.service.get_opportunity(opportunity_id),
+                    result,
+                    query.get("notice", [""])[0],
+                ),
+                "text/html; charset=utf-8",
+            )
+
         match = re.fullmatch(r"/opportunities/([^/]+)/archive", path)
         if match and method == "POST":
             self.service.archive_opportunity(
@@ -643,6 +755,7 @@ class AnchorIntelApplication:
                     self.service.list_knowledge_reviews(match.group(1)),
                     self.service.list_knowledge_modules(),
                     self.service.list_operational_assessments(match.group(1)),
+                    self.service.list_dossiers(match.group(1)),
                 ),
                 "text/html; charset=utf-8",
             )

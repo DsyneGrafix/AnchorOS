@@ -38,6 +38,12 @@ def build_openapi() -> dict:
         "required": True,
         "schema": {"type": "string", "pattern": "^AS-[0-9]{6}$"},
     }
+    dossier_parameter = {
+        "name": "dossier_id",
+        "in": "path",
+        "required": True,
+        "schema": {"type": "string", "pattern": "^ED-[0-9]{6}$"},
+    }
     evidence_json_body = {
         "required": True,
         "content": {
@@ -76,12 +82,13 @@ def build_openapi() -> dict:
         "openapi": "3.1.0",
         "info": {
             "title": "AnchorIntel API",
-            "version": "0.4.0",
+            "version": "0.5.0",
             "description": (
                 "AnchorOS service interface for opportunity, evidence, deterministic "
-                "Knowledge Review, and S.P.A.T.I.A.L. assessment lifecycle management. "
-                "Sprint 4 adds AS identifiers, immutable input snapshots, engine and adapter "
-                "versions, replay hashes, strict stale-input rejection, and dynamic lifecycle eligibility."
+                "Knowledge Review, S.P.A.T.I.A.L. assessment, and Executive Opportunity "
+                "Dossier lifecycle management. Sprint 5 adds ED identifiers, persisted "
+                "report snapshots, deterministic HTML/PDF/JSON exports, replay hashes, "
+                "and dynamic dossier lifecycle eligibility."
             ),
         },
         "servers": [{"url": "http://127.0.0.1:8080"}],
@@ -346,6 +353,83 @@ def build_openapi() -> dict:
                     },
                 },
             },
+            "/opportunities/{opportunity_id}/dossiers": {
+                "parameters": [opportunity_parameter],
+                "get": {
+                    "tags": ["Reports"],
+                    "summary": "List persisted Executive Opportunity Dossiers",
+                    "responses": {
+                        "200": {"description": "Dossier collection"},
+                        "404": {"description": "Opportunity not found"},
+                    },
+                },
+                "post": {
+                    "tags": ["Reports"],
+                    "summary": "Generate a deterministic dossier from current persisted records",
+                    "requestBody": {
+                        "required": False,
+                        "content": {
+                            "application/json": {
+                                "schema": {"$ref": "#/components/schemas/DossierGenerate"}
+                            }
+                        },
+                    },
+                    "responses": {
+                        "201": {"description": "Dossier persisted or idempotently reused"},
+                        "404": {"description": "Opportunity or assessment not found"},
+                        "409": {"description": "Current persisted inputs are not report-ready"},
+                    },
+                },
+            },
+            "/opportunities/{opportunity_id}/dossiers/{dossier_id}": {
+                "parameters": [opportunity_parameter, dossier_parameter],
+                "get": {
+                    "tags": ["Reports"],
+                    "summary": "Retrieve a persisted Executive Opportunity Dossier",
+                    "responses": {
+                        "200": {"description": "Dossier metadata and canonical document"},
+                        "404": {"description": "Dossier not found for opportunity"},
+                    },
+                },
+            },
+            "/opportunities/{opportunity_id}/dossiers/{dossier_id}/replay": {
+                "parameters": [opportunity_parameter, dossier_parameter],
+                "post": {
+                    "tags": ["Reports"],
+                    "summary": "Re-render the immutable snapshot and compare all stored artifacts",
+                    "responses": {
+                        "200": {"description": "Dossier replay comparison"},
+                        "404": {"description": "Dossier not found for opportunity"},
+                    },
+                },
+            },
+            "/opportunities/{opportunity_id}/dossiers/{dossier_id}/{format}": {
+                "parameters": [
+                    opportunity_parameter,
+                    dossier_parameter,
+                    {
+                        "name": "format",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "string", "enum": ["html", "pdf", "json"]},
+                    },
+                ],
+                "get": {
+                    "tags": ["Reports"],
+                    "summary": "Download an exact persisted or canonical dossier export",
+                    "responses": {
+                        "200": {
+                            "description": "Dossier export",
+                            "content": {
+                                "text/html": {"schema": {"type": "string"}},
+                                "application/pdf": {"schema": {"type": "string", "format": "binary"}},
+                                "application/json": {"schema": {"type": "object"}},
+                            },
+                        },
+                        "404": {"description": "Dossier or export format not found"},
+                    },
+                },
+            },
             "/v1/evidence": {
                 "get": {
                     "tags": ["Evidence"],
@@ -520,6 +604,16 @@ def build_openapi() -> dict:
                             "description": "Optional explicit completed current review; defaults to the current lifecycle-eligible review.",
                         },
                         "reason": {"type": "string"},
+                    },
+                },
+                "DossierGenerate": {
+                    "type": "object",
+                    "properties": {
+                        "assessment_id": {
+                            "type": "string",
+                            "pattern": "^AS-[0-9]{6}$",
+                            "description": "Optional current assessment; defaults to the lifecycle-eligible assessment.",
+                        }
                     },
                 },
             }

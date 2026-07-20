@@ -19,6 +19,13 @@ from .assessment import (
     build_engine_input,
     build_operational_result,
 )
+from .dossier import (
+    DOSSIER_FORMAT_VERSION,
+    build_artifacts,
+    build_input_snapshot,
+    render_json,
+    sha256_json as dossier_sha256_json,
+)
 from .errors import ApiError
 from .knowledge import KnowledgeModuleRegistry, execute_module, sha256_json
 from .repository import Repository
@@ -158,6 +165,13 @@ class AnchorIntelService:
         current_assessment = next(
             (item for item in assessments if item["lifecycle_eligible"]), None
         )
+        dossiers = [
+            self._annotate_dossier(item)
+            for item in self.repository.list_dossiers(opportunity_id)
+        ]
+        current_dossier = next(
+            (item for item in dossiers if item["lifecycle_eligible"]), None
+        )
         workflow = record.get("workflow")
         if isinstance(workflow, list):
             record["workflow"] = [
@@ -176,6 +190,11 @@ class AnchorIntelService:
                     "state": "complete" if current_assessment else "pending",
                 }
                 if step.get("key") == "assessment"
+                else {
+                    **step,
+                    "state": "complete" if current_dossier else "pending",
+                }
+                if step.get("key") == "dossier"
                 else dict(step)
                 for step in workflow
             ]
@@ -184,6 +203,8 @@ class AnchorIntelService:
         record["current_knowledge_review"] = current_review
         record["assessment_count"] = len(assessments)
         record["current_assessment"] = current_assessment
+        record["dossier_count"] = len(dossiers)
+        record["current_dossier"] = current_dossier
         return record
 
     def list_opportunities(self, include_archived: bool = False) -> list[dict[str, Any]]:
@@ -1141,6 +1162,284 @@ class AnchorIntelService:
             "result": recomputed,
         }
         self.repository.record_assessment_replayed(assessment, actor, replay)
+        return replay
+
+    def dossier_readiness(
+        self, opportunity_id: str, assessment_id: str | None = None
+    ) -> dict[str, Any]:
+        """Evaluate persisted report inputs without rerunning upstream engines."""
+
+        opportunity = self.repository.get_opportunity(
+            opportunity_id, include_archived=True
+        )
+        errors: list[str] = []
+        warnings: list[str] = []
+        if opportunity.get("archived"):
+            errors.append("The opportunity is archived.")
+        if assessment_id:
+            try:
+                assessment = self.get_operational_assessment(
+                    opportunity_id, assessment_id
+                )
+            except ApiError as exc:
+                if exc.status == 404:
+                    assessment = None
+                    errors.append(exc.message)
+                else:
+                    raise
+        else:
+            assessment = next(
+                (
+                    item
+                    for item in self.list_operational_assessments(opportunity_id)
+                    if item.get("lifecycle_eligible")
+                ),
+                None,
+            )
+            if assessment is None:
+                errors.append("A current S.P.A.T.I.A.L. assessment is required.")
+        review: dict[str, Any] | None = None
+        if assessment is not None:
+            if assessment.get("stale"):
+                errors.extend(assessment.get("stale_reasons", []))
+            try:
+                review = self.get_knowledge_review(
+                    opportunity_id, str(assessment.get("knowledge_review_id", ""))
+                )
+            except ApiError as exc:
+                errors.append(exc.message)
+            if review is not None and not review.get("lifecycle_eligible"):
+                errors.extend(review.get("stale_reasons", []))
+        evidence = self.repository.list_evidence(opportunity_id)
+        if not evidence:
+            errors.append("At least one active evidence record is required.")
+        snapshot: dict[str, Any] | None = None
+        input_hash = ""
+        if assessment is not None and review is not None and not errors:
+            snapshot = build_input_snapshot(
+                opportunity, evidence, review, assessment
+            )
+            input_hash = dossier_sha256_json(snapshot)
+            if assessment.get("result", {}).get("warnings"):
+                warnings.extend(assessment["result"]["warnings"])
+            if review.get("output", {}).get("missing_evidence"):
+                warnings.append(
+                    "The source Knowledge Review contains missing-evidence items; "
+                    "the dossier will reproduce them without reinterpretation."
+                )
+        return {
+            "opportunity_id": opportunity_id,
+            "ready": not errors,
+            "errors": list(dict.fromkeys(errors)),
+            "warnings": list(dict.fromkeys(warnings)),
+            "assessment": assessment,
+            "knowledge_review": review,
+            "active_evidence_count": len(evidence),
+            "input_hash": input_hash,
+            "input_snapshot": snapshot,
+            "format_version": DOSSIER_FORMAT_VERSION,
+            "bounded_execution_notice": (
+                "This dossier uses only persisted local records. It does not browse the "
+                "internet, invoke an external AI model, regenerate evidence, rerun the "
+                "Knowledge Module, or rerun the S.P.A.T.I.A.L. assessment."
+            ),
+        }
+
+    def generate_dossier(
+        self,
+        opportunity_id: str,
+        actor: str,
+        assessment_id: str | None = None,
+    ) -> dict[str, Any]:
+        readiness = self.dossier_readiness(opportunity_id, assessment_id)
+        if not readiness["ready"]:
+            raise ApiError(
+                409,
+                "dossier_not_ready",
+                "Persisted lifecycle inputs are not ready for dossier generation",
+                {"reasons": readiness["errors"]},
+            )
+        assessment = readiness["assessment"]
+        review = readiness["knowledge_review"]
+        snapshot = readiness["input_snapshot"]
+        assert assessment is not None and review is not None and snapshot is not None
+        existing = self.repository.find_dossier_by_input_hash(
+            opportunity_id, readiness["input_hash"]
+        )
+        if existing is not None:
+            result = self._annotate_dossier(existing)
+            result["reused"] = True
+            return result
+        dossier_id = self.repository.next_dossier_id()
+        document, html_report, pdf_report, _, input_hash, replay_hash = build_artifacts(
+            dossier_id, snapshot
+        )
+        current = next(
+            (
+                item
+                for item in self.list_dossiers(opportunity_id)
+                if item.get("lifecycle_eligible")
+            ),
+            None,
+        )
+        created = self.repository.create_dossier(
+            dossier_id,
+            opportunity_id,
+            review["review_id"],
+            assessment["assessment_id"],
+            snapshot,
+            document,
+            html_report,
+            pdf_report,
+            input_hash,
+            replay_hash,
+            DOSSIER_FORMAT_VERSION,
+            actor,
+            current["dossier_id"] if current else None,
+        )
+        result = self._annotate_dossier(created)
+        result["reused"] = False
+        return result
+
+    def _annotate_dossier(self, record: dict[str, Any]) -> dict[str, Any]:
+        dossier = dict(record)
+        reasons: list[str] = []
+        try:
+            opportunity = self.repository.get_opportunity(
+                dossier["opportunity_id"], include_archived=True
+            )
+        except ApiError:
+            opportunity = None
+            reasons.append("The opportunity is no longer available.")
+        if opportunity is not None:
+            if opportunity.get("archived"):
+                reasons.append("The opportunity is archived.")
+            expected_revision = dossier.get("document", {}).get(
+                "opportunity_summary", {}
+            ).get("revision")
+            if opportunity.get("revision") != expected_revision:
+                reasons.append("The opportunity revision has changed.")
+        try:
+            assessment = self.get_operational_assessment(
+                dossier["opportunity_id"], dossier["assessment_id"]
+            )
+        except ApiError:
+            assessment = None
+            reasons.append("The source assessment is unavailable.")
+        if assessment is not None and not assessment.get("lifecycle_eligible"):
+            reasons.extend(assessment.get("stale_reasons", []))
+        if assessment is not None:
+            if assessment.get("knowledge_review_id") != dossier.get(
+                "knowledge_review_id"
+            ):
+                reasons.append("The assessment-to-review provenance has changed.")
+            try:
+                review = self.get_knowledge_review(
+                    dossier["opportunity_id"], dossier["knowledge_review_id"]
+                )
+            except ApiError:
+                review = None
+                reasons.append("The source Knowledge Review is unavailable.")
+            if review is not None and not review.get("lifecycle_eligible"):
+                reasons.extend(review.get("stale_reasons", []))
+            if opportunity is not None and review is not None and not reasons:
+                current_snapshot = build_input_snapshot(
+                    opportunity,
+                    self.repository.list_evidence(dossier["opportunity_id"]),
+                    review,
+                    assessment,
+                )
+                if dossier_sha256_json(current_snapshot) != dossier.get("input_hash"):
+                    reasons.append("The persisted dossier input set has changed.")
+        successor = self.repository.dossier_successor_id(dossier["dossier_id"])
+        if successor:
+            reasons.append(f"A newer dossier ({successor}) supersedes this artifact.")
+        dossier["stale"] = bool(reasons)
+        dossier["stale_reasons"] = list(dict.fromkeys(reasons))
+        dossier["lifecycle_eligible"] = not reasons
+        return dossier
+
+    def list_dossiers(self, opportunity_id: str) -> list[dict[str, Any]]:
+        return [
+            self._annotate_dossier(item)
+            for item in self.repository.list_dossiers(opportunity_id)
+        ]
+
+    def get_dossier(
+        self, opportunity_id: str, dossier_id: str
+    ) -> dict[str, Any]:
+        dossier = self.repository.get_dossier(dossier_id)
+        if dossier["opportunity_id"] != opportunity_id:
+            raise ApiError(
+                404,
+                "dossier_not_found",
+                f"Dossier {dossier_id} was not found for {opportunity_id}",
+            )
+        return self._annotate_dossier(dossier)
+
+    def dossier_artifact(
+        self, opportunity_id: str, dossier_id: str, artifact: str
+    ) -> tuple[bytes, str, str]:
+        dossier = self.repository.get_dossier(dossier_id, include_artifacts=True)
+        if dossier["opportunity_id"] != opportunity_id:
+            raise ApiError(
+                404,
+                "dossier_not_found",
+                f"Dossier {dossier_id} was not found for {opportunity_id}",
+            )
+        if artifact == "html":
+            return (
+                dossier["html_report"].encode("utf-8"),
+                "text/html; charset=utf-8",
+                f"{dossier_id}.html",
+            )
+        if artifact == "pdf":
+            return dossier["pdf_report"], "application/pdf", f"{dossier_id}.pdf"
+        if artifact == "json":
+            return (
+                render_json(dossier["document"]),
+                "application/json; charset=utf-8",
+                f"{dossier_id}.json",
+            )
+        raise ApiError(404, "dossier_artifact_not_found", "Unknown dossier format")
+
+    def replay_dossier(
+        self, opportunity_id: str, dossier_id: str, actor: str
+    ) -> dict[str, Any]:
+        dossier = self.repository.get_dossier(
+            dossier_id, include_artifacts=True, include_snapshot=True
+        )
+        if dossier["opportunity_id"] != opportunity_id:
+            raise ApiError(
+                404,
+                "dossier_not_found",
+                f"Dossier {dossier_id} was not found for {opportunity_id}",
+            )
+        document, html_report, pdf_report, json_report, input_hash, replay_hash = (
+            build_artifacts(dossier_id, dossier["input_snapshot"])
+        )
+        artifact_matches = {
+            "json": document == dossier["document"]
+            and json_report == render_json(dossier["document"]),
+            "html": html_report == dossier["html_report"],
+            "pdf": pdf_report == dossier["pdf_report"],
+        }
+        replay = {
+            "dossier_id": dossier_id,
+            "opportunity_id": opportunity_id,
+            "match": (
+                input_hash == dossier["input_hash"]
+                and replay_hash == dossier["replay_hash"]
+                and all(artifact_matches.values())
+            ),
+            "stored_input_hash": dossier["input_hash"],
+            "recomputed_input_hash": input_hash,
+            "stored_replay_hash": dossier["replay_hash"],
+            "recomputed_replay_hash": replay_hash,
+            "artifact_matches": artifact_matches,
+            "format_version": DOSSIER_FORMAT_VERSION,
+        }
+        self.repository.record_dossier_replayed(dossier, actor, replay)
         return replay
 
     def run_assessment(

@@ -1,146 +1,127 @@
 # AnchorIntel API v1 Architecture
 
-## Sprint 4 boundary
+## Sprint 5 boundary
 
 ```text
-Opportunity → Evidence → Knowledge Review → S.P.A.T.I.A.L. Assessment
- OI-*          EV-*          KR-*                    AS-*
+Opportunity → Evidence → Knowledge Review → S.P.A.T.I.A.L. Assessment → Executive Dossier
+ OI-*          EV-*          KR-*                    AS-*                  ED-*
 ```
 
-Sprint 4 implements only the Knowledge Review → Assessment seam. It preserves
-Sprint 1–3 services, does not generate an Executive Dossier (`ED-*`), does not
-add Knowledge Modules, and does not change the S.P.A.T.I.A.L. engine.
+Sprint 5 implements only the persisted Assessment → Dossier seam. It preserves
+Sprint 1–4 services, adds no Knowledge Modules, does not redesign or rerun the
+S.P.A.T.I.A.L. engine during reporting, and does not implement Archive Results.
 
 ## Layering
 
 ```text
 Browser / API clients / future domain applications
                          ↓
-AnchorIntel readiness and continuation-validity service
+AnchorIntel dossier readiness and continuation-validity service
                          ↓
-Persisted opportunity + active evidence + current Knowledge Review
+Persisted opportunity + evidence + Knowledge Review + assessment
                          ↓
-AnchorIntel deterministic adapter v1.0.0
+Pure dossier renderer v1.0.0
+                 ↙       ↓       ↘
+          canonical JSON  HTML  PDF
                          ↓
-Existing S.P.A.T.I.A.L. engine v0.1.0 (unchanged)
-                         ↓
-SQLite AS record + immutable snapshot + provenance + replay hash + audit
+SQLite ED record + immutable snapshot + hashes + audit
 ```
 
 AnchorOS supplies platform lifecycle and future gateway services. AnchorIntel
-owns operational resource contracts and persisted provenance. S.P.A.T.I.A.L.
-owns scoring, evidence confidence, gates, fatal-constraint precedence, and the
-recommendation taxonomy. Applications request an assessment capability rather
-than invoking internal score calculations.
+owns resource contracts and provenance. S.P.A.T.I.A.L. remains the sole owner of
+its recommendation, score, confidence, gate, and risk semantics. The reporting
+layer copies those values exactly and never calculates a new decision.
 
-## Readiness and strict execution
+## Readiness
 
-The opportunity-scoped assessment service fails closed unless:
+Generation fails closed unless:
 
 - the opportunity exists and is active;
-- at least one active evidence record exists;
-- a selected Knowledge Review exists, is `Completed`, and is not superseded;
-- its opportunity revision and evidence trace still match;
-- its module remains Active with the same version and integrity hash; and
-- the explicit adapter output satisfies the unchanged engine contract.
+- active evidence exists;
+- a current completed Knowledge Review is linked by the assessment;
+- the selected operational assessment exists and is lifecycle-eligible; and
+- all assessment continuation-validity rules still pass.
 
-A selected stale review returns HTTP 409. The legacy `/v1/assessments/run`
-route remains available for pre-existing full engine profiles and does not
-participate in the Sprint 4 lifecycle state.
+An optional `assessment_id` may be supplied, but stale assessments are rejected.
+The default is the current lifecycle-eligible operational assessment.
 
-## Adapter contract
+## Immutable dossier snapshot
 
-The engine requires eight dimension assessments, six mandatory gates, evidence,
-and lifecycle controls. The adapter follows two rules:
-
-1. complete persisted dimension/gate/lifecycle structures pass through; and
-2. absent structures receive conservative, documented values based only on the
-   persisted opportunity, active evidence, current review, and module dates.
-
-The geographic module is not stretched into a funding, commercial, or delivery
-finding. Uncovered domains remain low, provisional, or failed. Adapter
-derivation text is stored and shown beside the engine explanation. This mapping
-is versioned independently as `1.0.0` and participates in staleness.
-
-## Immutable assessment snapshot
-
-Each `AS-*` row stores:
+Each `ED-*` row stores:
 
 | Surface | Stored content |
 |---|---|
-| Opportunity | Exact business fields and revision |
-| Evidence | Sorted active records, revisions, classifications, and file hashes |
-| Knowledge Review | Full persisted review output and replay identifiers |
-| Knowledge Module | ID, version, integrity hash, effective date, review date |
-| Engine input | Exact payload supplied to S.P.A.T.I.A.L. |
-| Derivation | Adapter version and field-basis explanations |
-| Provenance | IDs, revisions, hashes, engine version, adapter version, input hash |
-| Decision | Recommendation, score, confidence, risk, gates, assumptions, explanation, trace |
+| Opportunity | ID, business summary, revision, created/updated timestamps |
+| Evidence | Sorted active IDs, titles, status, confidence, revision, source, file hash |
+| Knowledge Review | ID, revision, module/version/hash, output hash, bounded summaries |
+| Assessment | ID, revision, exact result subset, engine/adapter versions, hashes, execution time |
+| Canonical report | Executive, opportunity, evidence, review, assessment, trace, replay, footer |
+| Exports | Standalone HTML and PDF bytes; JSON derives exactly from the stored canonical report |
+| Identity | Input hash, replay hash, format version, predecessor link, timestamps |
 
-Execution timestamp and assessment ID are stored outside deterministic replay
-material. Identical persisted inputs, review, engine version, and adapter
-version therefore produce identical results and replay hashes.
+Generation time is stored as row metadata and is excluded from report identity.
+The report-state timestamp is the maximum relevant persisted input timestamp.
+Identical inputs therefore produce identical JSON, HTML, PDF, input hashes, and
+replay hashes.
 
-## Replay
+## Idempotency and replay
 
-Replay reads the immutable snapshot rather than current mutable records,
-re-executes the installed engine, reconstructs the operational result, and
-compares canonical structured output plus SHA-256 hash. It records an
-`assessment.replayed` audit event. It creates no new evidence, review, or
-assessment and does not advance lifecycle state.
+`(opportunity_id, input_hash)` is unique. Repeating generation over identical
+records returns the existing dossier instead of creating a time-dependent copy.
 
-The replay hash supports integrity comparison. It does not establish source
-truth, independent verification, digital-signature identity, cryptographic
-immutability, or tamper-evident persistence.
+Replay reads `input_snapshot_json`, invokes only the pure report renderer, and
+compares:
+
+- canonical document and JSON;
+- exact HTML text;
+- exact PDF bytes;
+- input hash; and
+- dossier replay hash.
+
+It records `dossier.replayed` and does not rerun upstream logic or advance state.
 
 ## Continuation validity
 
-An operational assessment remains lifecycle-eligible only while:
+An `ED-*` artifact remains lifecycle-eligible only while:
 
 | Condition | Stale when |
 |---|---|
 | Opportunity | Archived or revision differs |
-| Evidence | Active trace differs by ID, revision, file hash, status, or confidence |
-| Review | Missing, incomplete, superseded, stale, revised, or output hash differs |
-| Module | Missing, inactive, version differs, or integrity hash differs |
-| Engine | Installed version differs |
-| Adapter | Installed version differs |
+| Evidence | Active trace changes through the source assessment |
+| Review | Missing, incomplete, superseded, stale, or provenance differs |
+| Assessment | Missing, superseded, stale, or no longer lifecycle-eligible |
+| Dossier | A successor explicitly supersedes it |
 
-Stale `AS-*` records remain visible. First detection is audited once. A new
-Knowledge Review and assessment are the recovery path; prior artifacts are not
-overwritten.
+Stale dossiers remain durable exports. A current Knowledge Review, assessment,
+and dossier are the recovery path; prior artifacts are never overwritten.
 
 ## Lifecycle derivation
 
-The opportunity service derives state from persisted records on every read:
+The Opportunity Service derives state from persisted records on every read:
 
 - Attach Evidence: at least one active evidence row;
-- Knowledge Module Review: at least one current completed review;
-- Run S.P.A.T.I.A.L.: at least one current lifecycle-eligible operational
-  assessment; and
-- Executive Dossier and Archive Results: pending in Sprint 4.
+- Knowledge Module Review: a current completed review;
+- Run S.P.A.T.I.A.L.: a current operational assessment;
+- Generate Executive Opportunity Dossier: a current `ED-*` row; and
+- Archive Results: pending in Sprint 5.
 
-There is no OI-000001 lifecycle special case. Reference seeding uses the same
-services and produces the provenance chain `OI-000001 → EV-000001 → KR-000001
-→ AS-000001`.
+There is no `OI-000001` special case in lifecycle calculation. Reference seeding
+uses the same public services. A real `KR-000002 → AS-000001` relationship is
+preserved in the dossier instead of being rewritten to the fresh-database example.
 
 ## Additive schema migration
 
-Repository initialization retains the existing `assessments` table and adds
-missing columns with idempotent `ALTER TABLE` statements:
+Repository initialization creates `executive_dossiers` with foreign keys to
+opportunity, Knowledge Review, assessment, and optional predecessor. A unique
+input-hash constraint enforces idempotency. Initialization is idempotent and
+drops or rewrites no existing records.
 
-```text
-assessment_kind, knowledge_review_id, engine_version, adapter_version,
-replay_hash, provenance_json, revision, updated_at
-```
-
-Existing rows receive safe defaults and remain readable as `legacy`. No table
-or row is dropped. The migration is forward-safe but not a substitute for a
-rollback backup because Sprint 3 source does not understand Sprint 4 columns.
+Sprint 4 source cannot read this table as a business resource, so safe rollback
+restores the complete pre-install source and SQLite/evidence backup together.
 
 ## Security boundary
 
-The SQLite audit log is an application record and is not tamper-evident. The
-reference server is loopback-bound and lacks production identity, authorization,
-isolation, encryption, gateway, availability, and load controls. No result
-should be treated as independently verified or as professional advice.
+The SQLite audit log and hashes are application records, not tamper-evident
+proof. The reference server lacks production identity, authorization, isolation,
+encryption, gateway, availability, and load controls. No dossier establishes
+source truth, external verification, professional advice, or customer approval.

@@ -15,7 +15,11 @@ from anchorintel_api.app import AnchorIntelApplication
 from anchorintel_api.errors import ApiError
 from anchorintel_api.knowledge import KnowledgeModuleRegistry, module_integrity_hash
 from anchorintel_api.repository import Repository
-from anchorintel_api.reference import ensure_reference_opportunity, ensure_reference_records
+from anchorintel_api.reference import (
+    ensure_reference_evidence,
+    ensure_reference_opportunity,
+    ensure_reference_records,
+)
 from anchorintel_api.server import create_server
 from anchorintel_api.service import AnchorIntelService
 
@@ -64,6 +68,20 @@ class ApiTestCase(unittest.TestCase):
         content_type = response.headers.get("Content-Type", "")
         parsed = json.loads(content) if "application/json" in content_type else content.decode()
         return response.status, parsed, dict(response.headers)
+
+    def request_raw(self, method, path, payload=None, headers=None):
+        body = json.dumps(payload).encode() if payload is not None else None
+        request_headers = {"X-Actor": "api-test", **(headers or {})}
+        if body is not None:
+            request_headers["Content-Type"] = "application/json"
+        request = Request(
+            f"http://127.0.0.1:{self.port}{path}",
+            data=body,
+            headers=request_headers,
+            method=method,
+        )
+        response = urlopen(request, timeout=5)
+        return response.status, response.read(), dict(response.headers)
 
     def request_form(self, path, fields):
         body = urlencode(fields).encode()
@@ -159,7 +177,7 @@ class ApiTestCase(unittest.TestCase):
         status, health, _ = self.request("GET", "/health")
         self.assertEqual(status, 200)
         self.assertEqual(health["status"], "ok")
-        self.assertEqual(health["version"], "0.4.0")
+        self.assertEqual(health["version"], "0.5.0")
         status, contract, _ = self.request("GET", "/v1/openapi.json")
         self.assertEqual(status, 200)
         self.assertIn("/opportunities/{opportunity_id}/evidence", contract["paths"])
@@ -176,6 +194,17 @@ class ApiTestCase(unittest.TestCase):
         )
         self.assertIn(
             "/opportunities/{opportunity_id}/assessments/{assessment_id}/replay",
+            contract["paths"],
+        )
+        self.assertIn(
+            "/opportunities/{opportunity_id}/dossiers", contract["paths"]
+        )
+        self.assertIn(
+            "/opportunities/{opportunity_id}/dossiers/{dossier_id}/replay",
+            contract["paths"],
+        )
+        self.assertIn(
+            "/opportunities/{opportunity_id}/dossiers/{dossier_id}/{format}",
             contract["paths"],
         )
         self.assertIn("/v1/assessments/run", contract["paths"])
@@ -261,12 +290,15 @@ class ApiTestCase(unittest.TestCase):
         self.assertEqual(first["assessment"]["assessment_id"], "AS-000001")
         self.assertEqual(first["assessment"]["knowledge_review_id"], "KR-000001")
         self.assertTrue(first["assessment"]["replay_hash"])
+        self.assertTrue(first["dossier_created"])
+        self.assertEqual(first["dossier"]["dossier_id"], "ED-000001")
 
         second = ensure_reference_records(self.service)
         self.assertFalse(second["opportunity_created"])
         self.assertFalse(second["evidence_created"])
         self.assertFalse(second["knowledge_review_created"])
         self.assertFalse(second["assessment_created"])
+        self.assertFalse(second["dossier_created"])
         self.assertEqual(second["evidence"]["revision"], 1)
         opportunity = self.service.get_opportunity("OI-000001")
         evidence_step = next(
@@ -284,7 +316,7 @@ class ApiTestCase(unittest.TestCase):
         dossier_step = next(
             step for step in opportunity["workflow"] if step["key"] == "dossier"
         )
-        self.assertEqual(dossier_step["state"], "pending")
+        self.assertEqual(dossier_step["state"], "complete")
 
     def test_spatial_assessment_run_detail_replay_and_lifecycle(self):
         references = ensure_reference_records(self.service)
@@ -943,6 +975,7 @@ class ApiTestCase(unittest.TestCase):
                     ).fetchall()
                 }
             self.assertIn("knowledge_reviews", tables)
+            self.assertIn("executive_dossiers", tables)
         finally:
             migrated.close()
 
@@ -1108,6 +1141,198 @@ class ApiTestCase(unittest.TestCase):
         status, audit, _ = self.request("GET", "/v1/admin/audit?limit=50")
         self.assertEqual(status, 200)
         self.assertTrue(any(item["action"] == "opportunity.archived" for item in audit["items"]))
+
+    def test_executive_dossier_api_ui_exports_and_replay(self):
+        references = ensure_reference_records(self.service)
+        dossier = references["dossier"]
+        self.assertEqual(dossier["dossier_id"], "ED-000001")
+        document = dossier["document"]
+        self.assertEqual(
+            document["spatial_assessment_summary"]["recommendation"],
+            references["assessment"]["result"]["recommendation"],
+        )
+        self.assertEqual(document["evidence_summary"]["count"], 1)
+        self.assertEqual(
+            document["traceability"]["chain"],
+            ["OI-000001", "EV-000001", "KR-000001", "AS-000001", "ED-000001"],
+        )
+        self.assertIn(
+            "does not independently verify evidence", " ".join(document["footer"])
+        )
+
+        status, run_page, _ = self.request(
+            "GET",
+            "/opportunities/OI-000001/dossiers/new",
+            headers={"Accept": "text/html"},
+        )
+        self.assertEqual(status, 200)
+        self.assertIn("Generate Executive Dossier", run_page)
+        self.assertIn("does not browse the internet", run_page)
+
+        status, generated, _ = self.request(
+            "POST", "/opportunities/OI-000001/dossiers", {}
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(generated["dossier_id"], "ED-000001")
+        self.assertTrue(generated["reused"])
+
+        status, page, _ = self.request(
+            "GET",
+            "/opportunities/OI-000001/dossiers/ED-000001",
+            headers={"Accept": "text/html"},
+        )
+        self.assertEqual(status, 200)
+        self.assertIn("Download HTML", page)
+        self.assertIn("Download PDF", page)
+        self.assertIn("Download JSON", page)
+        self.assertIn("Traceability", page)
+
+        for format_name, media_type, prefix in (
+            ("html", "text/html", b"<!doctype html>"),
+            ("pdf", "application/pdf", b"%PDF-1.4"),
+            ("json", "application/json", b"{"),
+        ):
+            status, payload, headers = self.request_raw(
+                "GET",
+                f"/opportunities/OI-000001/dossiers/ED-000001/{format_name}",
+            )
+            self.assertEqual(status, 200)
+            self.assertIn(media_type, headers["Content-Type"])
+            self.assertTrue(payload.lstrip().startswith(prefix))
+            self.assertIn(
+                f'filename="ED-000001.{format_name}"',
+                headers["Content-Disposition"],
+            )
+            if format_name == "pdf":
+                self.assertIn(b"xref", payload)
+                self.assertTrue(payload.endswith(b"%%EOF\n"))
+            if format_name == "json":
+                self.assertEqual(json.loads(payload)["dossier_id"], "ED-000001")
+
+        status, replay, _ = self.request(
+            "POST",
+            "/opportunities/OI-000001/dossiers/ED-000001/replay",
+            {},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(replay["match"])
+        self.assertEqual(
+            replay["artifact_matches"], {"html": True, "json": True, "pdf": True}
+        )
+        actions = [item["action"] for item in self.repository.list_audit(50)]
+        self.assertIn("dossier.generated", actions)
+        self.assertIn("dossier.replayed", actions)
+
+    def test_dossier_is_deterministic_idempotent_and_lifecycle_derived(self):
+        first = ensure_reference_records(self.service)["dossier"]
+        first_artifacts = {
+            kind: self.service.dossier_artifact(
+                "OI-000001", first["dossier_id"], kind
+            )[0]
+            for kind in ("html", "pdf", "json")
+        }
+        second = self.service.generate_dossier("OI-000001", "determinism-test")
+        self.assertEqual(second["dossier_id"], first["dossier_id"])
+        self.assertEqual(second["input_hash"], first["input_hash"])
+        self.assertEqual(second["replay_hash"], first["replay_hash"])
+        self.assertTrue(second["reused"])
+        for kind, expected in first_artifacts.items():
+            self.assertEqual(
+                self.service.dossier_artifact("OI-000001", "ED-000001", kind)[0],
+                expected,
+            )
+        dossier_step = next(
+            item
+            for item in self.service.get_opportunity("OI-000001")["workflow"]
+            if item["key"] == "dossier"
+        )
+        self.assertEqual(dossier_step["state"], "complete")
+
+        opportunity = self.repository.get_opportunity("OI-000001")
+        self.service.edit_opportunity(
+            "OI-000001",
+            {"description": opportunity["description"] + " Revised."},
+            "staleness-test",
+            opportunity["revision"],
+        )
+        stale = self.service.get_dossier("OI-000001", "ED-000001")
+        self.assertTrue(stale["stale"])
+        dossier_step = next(
+            item
+            for item in self.service.get_opportunity("OI-000001")["workflow"]
+            if item["key"] == "dossier"
+        )
+        self.assertEqual(dossier_step["state"], "pending")
+        self.assertTrue(
+            self.service.replay_dossier(
+                "OI-000001", "ED-000001", "staleness-test"
+            )["match"]
+        )
+
+    def test_dossier_preserves_kr_000002_to_as_000001_provenance(self):
+        ensure_reference_opportunity(self.service)
+        ensure_reference_evidence(self.service)
+        first_review = self.service.run_knowledge_review(
+            "OI-000001", "AKM-GEO-FL-001", "provenance-test"
+        )
+        self.assertEqual(first_review["review_id"], "KR-000001")
+        current_review = self.service.supersede_knowledge_review(
+            "OI-000001", "KR-000001", "provenance-test"
+        )
+        self.assertEqual(current_review["review_id"], "KR-000002")
+        assessment = self.service.run_spatial_assessment(
+            "OI-000001", "provenance-test", "KR-000002"
+        )
+        self.assertEqual(assessment["assessment_id"], "AS-000001")
+        dossier = self.service.generate_dossier("OI-000001", "provenance-test")
+        self.assertEqual(dossier["dossier_id"], "ED-000001")
+        self.assertEqual(
+            dossier["document"]["traceability"]["chain"],
+            ["OI-000001", "EV-000001", "KR-000002", "AS-000001", "ED-000001"],
+        )
+
+    def test_dossier_persists_and_replays_after_restart(self):
+        persistence_db = Path(self.tempdir.name) / "dossier-persistence.db"
+        first_repository = Repository(persistence_db)
+        first_service = AnchorIntelService(
+            first_repository,
+            evidence_storage_dir=Path(self.tempdir.name) / "dossier-files",
+        )
+        created = ensure_reference_records(first_service)["dossier"]
+        pdf_before = first_service.dossier_artifact(
+            "OI-000001", "ED-000001", "pdf"
+        )[0]
+        first_repository.close()
+
+        second_repository = Repository(persistence_db)
+        try:
+            second_service = AnchorIntelService(
+                second_repository,
+                evidence_storage_dir=Path(self.tempdir.name) / "dossier-files",
+            )
+            persisted = second_service.get_dossier("OI-000001", "ED-000001")
+            self.assertEqual(persisted["replay_hash"], created["replay_hash"])
+            self.assertEqual(
+                second_service.dossier_artifact(
+                    "OI-000001", "ED-000001", "pdf"
+                )[0],
+                pdf_before,
+            )
+            self.assertTrue(
+                second_service.replay_dossier(
+                    "OI-000001", "ED-000001", "restart-test"
+                )["match"]
+            )
+        finally:
+            second_repository.close()
+
+    def test_dossier_rejects_incomplete_lifecycle(self):
+        ensure_reference_opportunity(self.service)
+        status, error, _ = self.request(
+            "POST", "/opportunities/OI-000001/dossiers", {}
+        )
+        self.assertEqual(status, 409)
+        self.assertEqual(error["error"]["code"], "dossier_not_ready")
 
 
 if __name__ == "__main__":

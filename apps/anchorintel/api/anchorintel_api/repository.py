@@ -131,6 +131,32 @@ class Repository:
                 CREATE INDEX IF NOT EXISTS knowledge_reviews_opportunity_idx
                     ON knowledge_reviews(opportunity_id, created_at DESC);
 
+                CREATE TABLE IF NOT EXISTS executive_dossiers (
+                    dossier_id TEXT PRIMARY KEY,
+                    opportunity_id TEXT NOT NULL,
+                    knowledge_review_id TEXT NOT NULL,
+                    assessment_id TEXT NOT NULL,
+                    input_snapshot_json TEXT NOT NULL,
+                    dossier_json TEXT NOT NULL,
+                    html_report TEXT NOT NULL,
+                    pdf_report BLOB NOT NULL,
+                    input_hash TEXT NOT NULL,
+                    replay_hash TEXT NOT NULL,
+                    format_version TEXT NOT NULL,
+                    supersedes_dossier_id TEXT,
+                    revision INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(opportunity_id) REFERENCES opportunities(opportunity_id),
+                    FOREIGN KEY(knowledge_review_id) REFERENCES knowledge_reviews(review_id),
+                    FOREIGN KEY(assessment_id) REFERENCES assessments(assessment_id),
+                    FOREIGN KEY(supersedes_dossier_id) REFERENCES executive_dossiers(dossier_id),
+                    UNIQUE(opportunity_id, input_hash)
+                );
+
+                CREATE INDEX IF NOT EXISTS executive_dossiers_opportunity_idx
+                    ON executive_dossiers(opportunity_id, created_at DESC);
+
                 CREATE TABLE IF NOT EXISTS lifecycle_events (
                     event_id TEXT PRIMARY KEY,
                     opportunity_id TEXT NOT NULL,
@@ -300,6 +326,33 @@ class Repository:
         }
         if include_report:
             result["report_markdown"] = row["report_markdown"]
+        if include_snapshot:
+            result["input_snapshot"] = json.loads(row["input_snapshot_json"])
+        return result
+
+    @staticmethod
+    def _dossier_row(
+        row: sqlite3.Row,
+        include_artifacts: bool = False,
+        include_snapshot: bool = False,
+    ) -> dict[str, Any]:
+        result = {
+            "dossier_id": row["dossier_id"],
+            "opportunity_id": row["opportunity_id"],
+            "knowledge_review_id": row["knowledge_review_id"],
+            "assessment_id": row["assessment_id"],
+            "document": json.loads(row["dossier_json"]),
+            "input_hash": row["input_hash"],
+            "replay_hash": row["replay_hash"],
+            "format_version": row["format_version"],
+            "supersedes_dossier_id": row["supersedes_dossier_id"],
+            "revision": row["revision"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+        if include_artifacts:
+            result["html_report"] = row["html_report"]
+            result["pdf_report"] = bytes(row["pdf_report"])
         if include_snapshot:
             result["input_snapshot"] = json.loads(row["input_snapshot_json"])
         return result
@@ -1150,6 +1203,164 @@ class Repository:
                     "knowledge_review_id": assessment.get("knowledge_review_id"),
                     "replay_hash": assessment.get("replay_hash"),
                     "reasons": reasons,
+                },
+            )
+
+    @staticmethod
+    def _next_dossier_id(db: sqlite3.Connection) -> str:
+        rows = db.execute(
+            "SELECT dossier_id FROM executive_dossiers "
+            "WHERE dossier_id GLOB 'ED-[0-9]*'"
+        ).fetchall()
+        used = {
+            int(row["dossier_id"][3:])
+            for row in rows
+            if row["dossier_id"][3:].isdigit()
+        }
+        number = 1
+        while number in used:
+            number += 1
+        return f"ED-{number:06d}"
+
+    def next_dossier_id(self) -> str:
+        with self.connect() as db:
+            return self._next_dossier_id(db)
+
+    def create_dossier(
+        self,
+        dossier_id: str,
+        opportunity_id: str,
+        knowledge_review_id: str,
+        assessment_id: str,
+        input_snapshot: dict[str, Any],
+        document: dict[str, Any],
+        html_report: str,
+        pdf_report: bytes,
+        input_hash: str,
+        replay_hash: str,
+        format_version: str,
+        actor: str,
+        supersedes_dossier_id: str | None = None,
+    ) -> dict[str, Any]:
+        now = utcnow()
+        self.get_opportunity(opportunity_id)
+        try:
+            with self.connect() as db:
+                db.execute(
+                    "INSERT INTO executive_dossiers("
+                    "dossier_id, opportunity_id, knowledge_review_id, assessment_id, "
+                    "input_snapshot_json, dossier_json, html_report, pdf_report, input_hash, "
+                    "replay_hash, format_version, supersedes_dossier_id, revision, created_at, updated_at"
+                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)",
+                    (
+                        dossier_id,
+                        opportunity_id,
+                        knowledge_review_id,
+                        assessment_id,
+                        json.dumps(input_snapshot),
+                        json.dumps(document),
+                        html_report,
+                        sqlite3.Binary(pdf_report),
+                        input_hash,
+                        replay_hash,
+                        format_version,
+                        supersedes_dossier_id,
+                        now,
+                        now,
+                    ),
+                )
+                self._audit(
+                    db,
+                    actor,
+                    "dossier.generated",
+                    "executive_dossier",
+                    dossier_id,
+                    {
+                        "event_type": "dossier.generated",
+                        "opportunity_id": opportunity_id,
+                        "knowledge_review_id": knowledge_review_id,
+                        "assessment_id": assessment_id,
+                        "input_hash": input_hash,
+                        "replay_hash": replay_hash,
+                        "format_version": format_version,
+                        "supersedes_dossier_id": supersedes_dossier_id,
+                    },
+                )
+        except sqlite3.IntegrityError as exc:
+            raise ApiError(
+                409,
+                "dossier_conflict",
+                "The dossier identity or persisted input set already exists",
+            ) from exc
+        return self.get_dossier(dossier_id)
+
+    def get_dossier(
+        self,
+        dossier_id: str,
+        include_artifacts: bool = False,
+        include_snapshot: bool = False,
+    ) -> dict[str, Any]:
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT * FROM executive_dossiers WHERE dossier_id = ?",
+                (dossier_id,),
+            ).fetchone()
+        if row is None:
+            raise ApiError(
+                404, "dossier_not_found", f"Dossier {dossier_id} was not found"
+            )
+        return self._dossier_row(row, include_artifacts, include_snapshot)
+
+    def list_dossiers(self, opportunity_id: str) -> list[dict[str, Any]]:
+        self.get_opportunity(opportunity_id, include_archived=True)
+        with self.connect() as db:
+            rows = db.execute(
+                "SELECT * FROM executive_dossiers WHERE opportunity_id = ? "
+                "ORDER BY created_at DESC, dossier_id DESC",
+                (opportunity_id,),
+            ).fetchall()
+        return [self._dossier_row(row) for row in rows]
+
+    def find_dossier_by_input_hash(
+        self, opportunity_id: str, input_hash: str
+    ) -> dict[str, Any] | None:
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT * FROM executive_dossiers "
+                "WHERE opportunity_id = ? AND input_hash = ? LIMIT 1",
+                (opportunity_id, input_hash),
+            ).fetchone()
+        return self._dossier_row(row) if row else None
+
+    def dossier_successor_id(self, dossier_id: str) -> str | None:
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT dossier_id FROM executive_dossiers "
+                "WHERE supersedes_dossier_id = ? "
+                "ORDER BY created_at DESC, dossier_id DESC LIMIT 1",
+                (dossier_id,),
+            ).fetchone()
+        return str(row["dossier_id"]) if row else None
+
+    def record_dossier_replayed(
+        self, dossier: dict[str, Any], actor: str, replay: dict[str, Any]
+    ) -> None:
+        with self.connect() as db:
+            self._audit(
+                db,
+                actor,
+                "dossier.replayed",
+                "executive_dossier",
+                dossier["dossier_id"],
+                {
+                    "event_type": "dossier.replayed",
+                    "opportunity_id": dossier["opportunity_id"],
+                    "knowledge_review_id": dossier["knowledge_review_id"],
+                    "assessment_id": dossier["assessment_id"],
+                    "stored_replay_hash": dossier["replay_hash"],
+                    "recomputed_replay_hash": replay["recomputed_replay_hash"],
+                    "match": replay["match"],
+                    "artifact_matches": replay["artifact_matches"],
                 },
             )
 

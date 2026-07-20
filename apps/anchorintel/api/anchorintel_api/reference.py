@@ -12,6 +12,7 @@ REFERENCE_OPPORTUNITY_ID = "OI-000001"
 REFERENCE_EVIDENCE_ID = "EV-000001"
 REFERENCE_MODULE_ID = "AKM-GEO-FL-001"
 REFERENCE_ASSESSMENT_ID = "AS-000001"
+REFERENCE_DOSSIER_ID = "ED-000001"
 
 REFERENCE_OPPORTUNITY: dict[str, Any] = {
     "opportunity_id": REFERENCE_OPPORTUNITY_ID,
@@ -133,6 +134,7 @@ def ensure_reference_records(
     evidence, evidence_created = ensure_reference_evidence(service, actor)
     review, review_created = ensure_reference_review(service, actor)
     assessment, assessment_created = ensure_reference_assessment(service, actor)
+    dossier, dossier_created = ensure_reference_dossier(service, actor)
     return {
         "opportunity": opportunity,
         "opportunity_created": opportunity_created,
@@ -142,6 +144,8 @@ def ensure_reference_records(
         "knowledge_review_created": review_created,
         "assessment": assessment,
         "assessment_created": assessment_created,
+        "dossier": dossier,
+        "dossier_created": dossier_created,
     }
 
 
@@ -198,3 +202,20 @@ def ensure_reference_assessment(
         ),
         True,
     )
+
+
+def ensure_reference_dossier(
+    service: AnchorIntelService, actor: str = "anchorintel-bootstrap"
+) -> tuple[dict[str, Any] | None, bool]:
+    """Generate ED-000001 once when the persisted reference chain is current."""
+
+    dossiers = service.repository.list_dossiers(REFERENCE_OPPORTUNITY_ID)
+    if dossiers:
+        return service.get_dossier(
+            REFERENCE_OPPORTUNITY_ID, dossiers[0]["dossier_id"]
+        ), False
+    readiness = service.dossier_readiness(REFERENCE_OPPORTUNITY_ID)
+    if not readiness["ready"]:
+        return None, False
+    dossier = service.generate_dossier(REFERENCE_OPPORTUNITY_ID, actor)
+    return dossier, True
