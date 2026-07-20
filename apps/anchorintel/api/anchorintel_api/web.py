@@ -73,7 +73,7 @@ def _layout(title: str, content: str) -> str:
   </style>
 </head>
 <body>
-  <header><div class="bar"><a class="brand" href="/opportunities">Anchor<span>Intel</span></a><div class="tagline">Infrastructure Opportunity Intelligence</div></div></header>
+  <header><div class="bar"><a class="brand" href="/opportunities">Anchor<span>Intel</span></a><div class="tagline"><a style="color:#d7e6e1" href="/knowledge-modules">Knowledge Modules</a> · Infrastructure Opportunity Intelligence</div></div></header>
   <main>{content}</main>
 </body>
 </html>"""
@@ -121,6 +121,8 @@ def opportunity_detail(
     record: dict[str, Any],
     evidence_records: Iterable[dict[str, Any]] = (),
     notice: str = "",
+    knowledge_reviews: Iterable[dict[str, Any]] = (),
+    knowledge_modules: Iterable[dict[str, Any]] = (),
 ) -> str:
     archived = bool(record.get("archived"))
     evidence_items = list(evidence_records)
@@ -155,6 +157,23 @@ def opportunity_detail(
     if not evidence_rows:
         evidence_rows = '<tr><td class="empty" colspan="8">No evidence has been attached.</td></tr>'
     add_evidence = "" if archived else f'<a class="button" href="/opportunities/{quote(str(record["opportunity_id"]))}/evidence/new">Add Evidence</a>'
+    review_items = list(knowledge_reviews)
+    module_items = list(knowledge_modules)
+    review_rows = "".join(
+        f"""<tr><td><a class="record-title" href="/opportunities/{quote(str(record['opportunity_id']))}/knowledge-reviews/{quote(str(item['review_id']))}">{_text(item.get('review_id'))}</a></td>
+        <td>{_text(item.get('module_id'))}<div class="meta">v{_text(item.get('module_version'))}</div></td>
+        <td><span class="badge{' archived' if item.get('stale') else ''}">{'Stale' if item.get('stale') else _text(item.get('review_status'))}</span></td>
+        <td>{_text(item.get('confidence'))}</td><td>{_text(item.get('summary', {}).get('finding_count'), '0')} findings · {_text(item.get('summary', {}).get('unknown_count'), '0')} unknowns</td>
+        <td class="meta">{_text(item.get('created_at'))}</td><td><a href="/opportunities/{quote(str(record['opportunity_id']))}/knowledge-reviews/{quote(str(item['review_id']))}">View</a></td></tr>"""
+        for item in review_items
+    ) or '<tr><td class="empty" colspan="7">No Knowledge Module reviews have been run.</td></tr>'
+    module_options = "".join(
+        f'<option value="{escape(str(item["module_id"]))}">{_text(item.get("module_id"))} · {_text(item.get("name"))} · v{_text(item.get("version"))}</option>'
+        for item in module_items if item.get("status") == "Active"
+    )
+    run_review = ""
+    if not archived and module_options:
+        run_review = f'<a class="button" href="/opportunities/{quote(str(record["opportunity_id"]))}/knowledge-reviews/new">Run Knowledge Review</a>'
     return _layout(
         str(record.get("title", "Opportunity")),
         f"""<div class="eyebrow">{_text(record.get('opportunity_id'))} · {'Reference opportunity' if record.get('reference_record') else 'Opportunity record'}</div>
@@ -181,6 +200,11 @@ def opportunity_detail(
           <div class="section-head"><div><h2>Evidence</h2><div class="meta">{active_count} active · {len(evidence_items)} total</div></div>{add_evidence}</div>
           <table><thead><tr><th>ID</th><th>Evidence</th><th>Type</th><th>Status</th><th>Confidence</th><th>Source</th><th>Collected</th><th></th></tr></thead>
           <tbody>{evidence_rows}</tbody></table>
+        </section>
+        <section class="card table-wrap" style="margin-top:22px">
+          <div class="section-head"><div><h2>Knowledge Module Review</h2><div class="meta">{len(review_items)} persisted review{'s' if len(review_items) != 1 else ''}; stale results never complete the lifecycle.</div></div><a class="button secondary" href="/knowledge-modules">Module library</a></div>
+          {run_review}
+          <table style="margin-top:16px"><thead><tr><th>ID</th><th>Module</th><th>Status</th><th>Confidence</th><th>Output</th><th>Created</th><th></th></tr></thead><tbody>{review_rows}</tbody></table>
         </section>""",
     )
 
@@ -323,6 +347,105 @@ def evidence_detail(opportunity: dict[str, Any], evidence: dict[str, Any]) -> st
     )
 
 
+def knowledge_module_list(modules: Iterable[dict[str, Any]]) -> str:
+    items = list(modules)
+    rows = "".join(
+        f"""<tr><td><a class="record-title" href="/knowledge-modules/{quote(str(item['module_id']))}">{_text(item.get('module_id'))}</a></td>
+        <td><a class="record-title" href="/knowledge-modules/{quote(str(item['module_id']))}">{_text(item.get('name'))}</a><div class="meta">{_text(item.get('domain'))} · {_text(item.get('jurisdiction'))}</div></td>
+        <td>{_text(item.get('version'))}</td><td><span class="badge">{_text(item.get('status'))}</span></td><td>{_text(item.get('review_question_count'), '0')}</td><td>{_text(item.get('review_date'))}</td></tr>"""
+        for item in items
+    ) or '<tr><td class="empty" colspan="6">No active Knowledge Modules are installed.</td></tr>'
+    return _layout(
+        "Knowledge Modules",
+        f"""<div class="eyebrow">Knowledge Service · Sprint 3</div><h1>Versioned, bounded review logic.</h1>
+        <p class="lede">Modules are local, deterministic definitions with integrity hashes. They do not browse the internet or invoke an AI model.</p>
+        <div class="toolbar"><a class="button secondary" href="/opportunities">← Opportunities</a></div>
+        <section class="card table-wrap"><table><thead><tr><th>ID</th><th>Module</th><th>Version</th><th>Status</th><th>Questions</th><th>Review date</th></tr></thead><tbody>{rows}</tbody></table></section>""",
+    )
+
+
+def knowledge_review_form(
+    opportunity: dict[str, Any], modules: Iterable[dict[str, Any]]
+) -> str:
+    opportunity_id = str(opportunity["opportunity_id"])
+    options = "".join(
+        f'<option value="{escape(str(item["module_id"]))}">{_text(item.get("module_id"))} · {_text(item.get("name"))} · v{_text(item.get("version"))}</option>'
+        for item in modules
+        if item.get("status") == "Active"
+    )
+    return _layout(
+        "Run Knowledge Review",
+        f"""<div class="eyebrow">{_text(opportunity_id)} · Knowledge Service</div><h1>Run Knowledge Review</h1>
+        <p class="lede">Apply one version-controlled, deterministic module to the current opportunity revision and active evidence trace.</p>
+        <section class="card" style="margin-top:28px"><form method="post" action="/opportunities/{quote(opportunity_id)}/knowledge-reviews">
+        <div class="form-grid"><label class="full">Knowledge Module<select required name="module_id">{options}</select></label>
+        <label>Review status<select name="review_status"><option value="Completed">Completed</option><option value="Draft">Draft</option><option value="Ready">Ready</option><option value="Incomplete">Incomplete</option></select></label></div>
+        <div class="notice">This run uses only persisted local records. It does not browse the internet, invoke an external AI model, or independently verify evidence.</div>
+        <div class="toolbar"><button type="submit">Run module</button><a class="button secondary" href="/opportunities/{quote(opportunity_id)}">Cancel</a></div></form></section>""",
+    )
+
+
+def knowledge_module_detail(module: dict[str, Any]) -> str:
+    questions = "".join(
+        f'<li><strong>{_text(item.get("question_id"))}</strong> — {_text(item.get("question"))}</li>'
+        for item in module.get("review_questions", [])
+    )
+    limitations = "".join(f"<li>{_text(item)}</li>" for item in module.get("known_limitations", []))
+    return _layout(
+        str(module.get("module_id", "Knowledge Module")),
+        f"""<div class="eyebrow">{_text(module.get('module_id'))} · v{_text(module.get('version'))}</div><h1>{_text(module.get('name'))}</h1>
+        <p class="lede">{_text(module.get('description'))}</p><div class="toolbar"><a class="button secondary" href="/knowledge-modules">← Module library</a><span class="badge">{_text(module.get('status'))}</span></div>
+        <div class="grid"><section class="card"><h2>Review questions</h2><ol>{questions}</ol></section><aside class="card"><h2>Definition</h2><dl class="facts">
+        <div><dt>Publisher</dt><dd>{_text(module.get('publisher'))}</dd></div><div><dt>Jurisdiction</dt><dd>{_text(module.get('jurisdiction'))}</dd></div>
+        <div><dt>Effective</dt><dd>{_text(module.get('effective_date'))}</dd></div><div><dt>Review date</dt><dd>{_text(module.get('review_date'))}</dd></div></dl>
+        <h2 style="margin-top:24px">Integrity hash</h2><p class="hash">{_text(module.get('integrity_hash'))}</p><h2>Known limitations</h2><ul>{limitations}</ul></aside></div>""",
+    )
+
+
+def _review_section(title: str, items: Iterable[Any], empty: str) -> str:
+    rendered = "".join(
+        f"<li>{_text(item.get('statement') or item.get('reason') or item.get('rationale') or item)}</li>"
+        if isinstance(item, dict) else f"<li>{_text(item)}</li>"
+        for item in items
+    )
+    return f"<section style=\"margin-top:24px\"><h2>{escape(title)}</h2><ul>{rendered or f'<li class=\"meta\">{escape(empty)}</li>'}</ul></section>"
+
+
+def knowledge_review_detail(
+    opportunity: dict[str, Any], review: dict[str, Any]
+) -> str:
+    output = review.get("output", {})
+    opportunity_id = str(opportunity["opportunity_id"])
+    review_id = str(review["review_id"])
+    findings = "".join(
+        f"""<tr><td>{_text(item.get('question_id'))}</td><td><span class="badge">{_text(item.get('disposition'))}</span></td><td>{_text(item.get('rationale'))}</td><td>{_text(', '.join(item.get('evidence_ids', [])))}</td></tr>"""
+        for item in output.get("findings", [])
+    )
+    trace = "".join(
+        f"<tr><td>{_text(item.get('evidence_id'))}</td><td>{_text(item.get('revision'))}</td><td>{_text(item.get('evidence_status'))}</td><td>{_text(item.get('evidence_confidence'))}</td><td class=\"hash\">{_text(item.get('sha256'))}</td></tr>"
+        for item in review.get("evidence_trace", [])
+    ) or '<tr><td class="empty" colspan="5">No active evidence was consumed.</td></tr>'
+    stale = bool(review.get("stale"))
+    stale_html = _review_section("Staleness", review.get("stale_reasons", []), "Current") if stale else '<div class="notice"><strong>Current review.</strong> The persisted opportunity revision, active evidence trace, module version, and module hash still match.</div>'
+    actions = ""
+    if review.get("review_status") in {"Draft", "Ready", "Incomplete"} and not stale:
+        actions += f'<form method="post" action="/opportunities/{quote(opportunity_id)}/knowledge-reviews/{quote(review_id)}/complete"><input type="hidden" name="revision" value="{_text(review.get("revision"), "1")}"><button type="submit">Complete review</button></form>'
+    if review.get("review_status") != "Superseded":
+        actions += f'<form method="post" action="/opportunities/{quote(opportunity_id)}/knowledge-reviews/{quote(review_id)}/supersede"><button type="submit">Run again and supersede</button></form>'
+    return _layout(
+        review_id,
+        f"""<div class="eyebrow">{_text(review_id)} · Knowledge Review</div><h1>{_text(review.get('module_id'))}</h1><p class="lede">Persisted, replayable output for <a href="/opportunities/{quote(opportunity_id)}">{_text(opportunity.get('title'))}</a>.</p>
+        <div class="toolbar"><a class="button secondary" href="/opportunities/{quote(opportunity_id)}">← Opportunity</a>{actions}<span class="badge{' archived' if stale else ''}">{'Stale' if stale else _text(review.get('review_status'))}</span></div>{stale_html}
+        <section class="card"><dl class="facts"><div><dt>Confidence</dt><dd>{_text(review.get('confidence'))}</dd></div><div><dt>Revision</dt><dd>{_text(review.get('revision'))}</dd></div>
+        <div><dt>Module version</dt><dd>{_text(review.get('module_version'))}</dd></div><div><dt>Opportunity revision</dt><dd>{_text(review.get('opportunity_revision'))}</dd></div>
+        <div><dt>Created</dt><dd>{_text(review.get('created_at'))}</dd></div><div><dt>Reviewer source</dt><dd>{_text(review.get('reviewer_source'))}</dd></div></dl>
+        <h2 style="margin-top:24px">Findings</h2><div class="table-wrap"><table><thead><tr><th>Question</th><th>Disposition</th><th>Rationale</th><th>Evidence</th></tr></thead><tbody>{findings}</tbody></table></div>
+        {_review_section('Assumptions', output.get('assumptions', []), 'None recorded')}{_review_section('Unknowns', output.get('unknowns', []), 'None recorded')}{_review_section('Risks', output.get('risks', []), 'None recorded')}{_review_section('Missing evidence', output.get('missing_evidence', []), 'None recorded')}
+        <h2 style="margin-top:24px">Evidence trace</h2><div class="table-wrap"><table><thead><tr><th>Evidence ID</th><th>Revision</th><th>Status</th><th>Confidence</th><th>SHA-256</th></tr></thead><tbody>{trace}</tbody></table></div>
+        <h2 style="margin-top:24px">Replay hashes</h2><p class="hash">Module: {_text(review.get('module_integrity_hash'))}<br>Inputs: {_text(review.get('input_snapshot_hash'))}<br>Output: {_text(review.get('output_hash'))}</p>
+        <div class="notice"><strong>Reference evidence notice:</strong> {_text(output.get('reference_evidence_notice'))}</div>
+        <div class="notice"><strong>Bounded output:</strong> {_text(output.get('disclaimer'))}<br>{_text(' '.join(output.get('limitations', [])))}</div></section>""",
+    )
 def error_page(status: int, message: str) -> str:
     return _layout(
         f"Error {status}",

@@ -10,6 +10,7 @@ from .service import AnchorIntelService
 
 REFERENCE_OPPORTUNITY_ID = "OI-000001"
 REFERENCE_EVIDENCE_ID = "EV-000001"
+REFERENCE_MODULE_ID = "AKM-GEO-FL-001"
 
 REFERENCE_OPPORTUNITY: dict[str, Any] = {
     "opportunity_id": REFERENCE_OPPORTUNITY_ID,
@@ -129,9 +130,41 @@ def ensure_reference_records(
 ) -> dict[str, Any]:
     opportunity, opportunity_created = ensure_reference_opportunity(service, actor)
     evidence, evidence_created = ensure_reference_evidence(service, actor)
+    review, review_created = ensure_reference_review(service, actor)
     return {
         "opportunity": opportunity,
         "opportunity_created": opportunity_created,
         "evidence": evidence,
         "evidence_created": evidence_created,
+        "knowledge_review": review,
+        "knowledge_review_created": review_created,
     }
+
+
+def ensure_reference_review(
+    service: AnchorIntelService, actor: str = "anchorintel-bootstrap"
+) -> tuple[dict[str, Any] | None, bool]:
+    """Generate KR-000001 from persisted OI-000001 and active evidence once."""
+
+    opportunity = service.repository.get_opportunity(
+        REFERENCE_OPPORTUNITY_ID, include_archived=True
+    )
+    if opportunity["archived"]:
+        return None, False
+    active_evidence = service.repository.list_evidence(REFERENCE_OPPORTUNITY_ID)
+    if not active_evidence:
+        return None, False
+    reviews = service.repository.list_knowledge_reviews(REFERENCE_OPPORTUNITY_ID)
+    if reviews:
+        return service.get_knowledge_review(
+            REFERENCE_OPPORTUNITY_ID, reviews[0]["review_id"]
+        ), False
+    return (
+        service.run_knowledge_review(
+            REFERENCE_OPPORTUNITY_ID,
+            REFERENCE_MODULE_ID,
+            actor,
+            review_status="Completed",
+        ),
+        True,
+    )

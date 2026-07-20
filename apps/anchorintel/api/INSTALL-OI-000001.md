@@ -1,8 +1,9 @@
 # Install OI-000001 Sprint 1 — Historical Instructions
 
-These instructions describe the original Sprint 1 package. For the bounded
-Sprint 2 Evidence Service overlay, backup, migration, install, verification,
-and rollback procedure, use `INSTALL-SPRINT2.md`.
+These instructions describe the original Sprint 1 package. For the current
+bounded Sprint 3 Knowledge Module overlay, backup, migration, install,
+verification, and rollback procedure, use `INSTALL-SPRINT3.md`. Sprint 2
+historical instructions remain in `INSTALL-SPRINT2.md`.
 
 This package is arranged for the current AnchorOS repository layout:
 

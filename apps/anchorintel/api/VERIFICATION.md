@@ -1,71 +1,82 @@
-# Verification Record — AnchorIntel API v0.2.0 Evidence Service Sprint 2
+# Verification Record — AnchorIntel API v0.3.0 Sprint 3
 
 Verification date: 2026-07-19
 
-## Automated API checks
+## AnchorIntel API suite
 
-Run from the AnchorOS `api` directory:
+Run from `apps/anchorintel/api`:
 
 ```bash
 PYTHONPATH="../spatial-opportunity-engine:." \
-  python -m unittest discover -s tests -v
+  python3 -m unittest discover -s tests -v
 ```
 
-The 15 automated tests include real HTTP transport tests on an ephemeral
-loopback port plus direct migration and restart-persistence checks. They verify:
+The 22 tests use temporary databases, file stores, module directories, and
+loopback HTTP servers. They cover:
 
-1. health and OpenAPI discovery;
-2. Sprint 1 Opportunity List, Detail, Edit, Archive, SQLite revision, and audit behavior;
-3. idempotent OI-000001 and EV-000001 reference seeding;
-4. metadata-only evidence creation;
-5. Add, Detail, and Edit Evidence page rendering;
-6. opportunity-scoped evidence listing and retrieval;
-7. metadata update and revision increment;
-8. recoverable evidence archive and audit visibility;
-9. lifecycle completion with active evidence and return to pending after archive;
-10. multipart file upload, safe generated storage name, and external storage;
-11. SHA-256 calculation and file download;
-12. missing-opportunity, invalid type/status, unsafe filename, and oversize-file rejection;
-13. additive Sprint 1 schema migration without legacy-row loss;
-14. evidence persistence after repository shutdown and restart;
-15. inherited assessment, report, lifecycle queue, revalidation, and controlled A → S → V behavior; and
-16. AnchorOS adapter registration, startup, health, and shutdown.
+1. all retained Sprint 1 opportunity behavior;
+2. all retained Sprint 2 evidence, file, revision, archive, lifecycle, and
+   migration behavior;
+3. health and OpenAPI v0.3.0 discovery;
+4. module list/retrieve and browser views;
+5. required module fields and integrity-hash rejection;
+6. unknown module and missing opportunity rejection;
+7. deterministic review output and hashes;
+8. active-only evidence consumption and archived-evidence exclusion;
+9. exact evidence revision/hash/status/confidence traceability;
+10. review persistence after repository restart;
+11. draft completion and lifecycle eligibility;
+12. failed-executor persistence and failure audit;
+13. opportunity-revision staleness;
+14. evidence-revision and archive staleness;
+15. rerun/supersession with prior review preservation;
+16. module load, review start/complete/fail/supersede/rerun/stale audit events;
+17. generated OI-000001/EV-000001/KR-000001 reference workflow and bounded
+    disclaimers;
+18. Knowledge Module run/detail and evidence-trace UI; and
+19. existing assessment, report, revalidation, queue, evidence-promotion, and
+    AnchorOS adapter regressions.
 
-Observed result on 2026-07-19:
+Observed source-tree result:
 
 ```text
-Ran 15 tests in 8.687s
+Ran 22 tests in 12.297s
 
 OK
 ```
 
-The Sprint 2 overlay does not contain `data/anchorintel.db` or customer-uploaded
-files. Tests create isolated temporary databases and file stores. The release
-launcher is syntax-checked separately and resolves the sibling engine without
-depending on the caller's working directory.
+## Existing S.P.A.T.I.A.L. engine suite
 
-A copy of the actual Sprint 1 packaged database was then started through the
-Sprint 2 CLI. Startup reported the existing OI-000001, created EV-000001,
-bound the HTTP service, and a fresh repository process read the migrated data
-as `OI-000001 EV-000001 complete 1`. The original Sprint 1 database was not
-modified during this check.
-
-## Engine regression checks
-
-Run from `spatial-opportunity-engine`:
+Run from `apps/anchorintel/spatial-opportunity-engine`:
 
 ```bash
-python -m unittest discover -s tests -v
+python3 -m unittest discover -s tests -v
 ```
 
-The eight unchanged engine tests verify scoring, evidence confidence,
-provisional downgrades, gate and fatal-constraint precedence, input/reference
-validation, lifecycle gating, deterministic JSON, and report traceability.
+The unchanged eight tests cover scoring, evidence confidence, provisional
+downgrades, gate/fatal-constraint precedence, input/reference validation,
+lifecycle gating, deterministic JSON, and report traceability.
+
+## Static checks
+
+```bash
+python3 -m py_compile anchorintel_api/*.py tests/test_api.py
+bash -n start-anchorintel.sh
+```
+
+## Extracted-package verification
+
+The final ZIP is extracted into an isolated temporary AnchorOS-shaped tree. The
+unchanged sibling engine is linked only for test resolution. The API suite,
+engine suite, Python compilation, launcher syntax check, manifest hash check,
+reference seed smoke test, and exclusion scan are rerun against the extracted
+files. Final observed timings and ZIP digest are recorded in
+`SPRINT3-PACKAGE-MANIFEST.txt`.
 
 ## Scope of evidence
 
-Passing checks demonstrate behavior for the tested contracts in the bundled
-Python runtime. They do not establish production security, multi-node
-concurrency, high availability, load capacity, external identity integration,
-AnchorOS registry compatibility, evidence truth, independent verification,
+These checks demonstrate the bundled contracts in the tested Python runtime.
+They do not establish production security, concurrent multi-process safety,
+high availability, load capacity, authenticated AnchorOS registry integration,
+evidence truth, current Florida conditions, independent verification,
 cryptographic immutability, or tamper-evident audit storage.

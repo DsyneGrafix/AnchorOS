@@ -20,6 +20,18 @@ def build_openapi() -> dict:
         "required": True,
         "schema": {"type": "string", "pattern": "^EV-[0-9]{6}$"},
     }
+    module_parameter = {
+        "name": "module_id",
+        "in": "path",
+        "required": True,
+        "schema": {"type": "string", "pattern": "^AKM-[A-Z0-9]+-[A-Z0-9]+-[0-9]{3}$"},
+    }
+    review_parameter = {
+        "name": "review_id",
+        "in": "path",
+        "required": True,
+        "schema": {"type": "string", "pattern": "^KR-[0-9]{6}$"},
+    }
     evidence_json_body = {
         "required": True,
         "content": {
@@ -58,18 +70,19 @@ def build_openapi() -> dict:
         "openapi": "3.1.0",
         "info": {
             "title": "AnchorIntel API",
-            "version": "0.2.0",
+            "version": "0.3.0",
             "description": (
-                "AnchorOS service interface for opportunity and evidence lifecycle "
-                "management. Sprint 2 adds managed evidence metadata, external file "
-                "storage, SHA-256 hashing, archiving, audit events, and persisted "
-                "Attach Evidence lifecycle behavior while preserving the existing v1 API."
+                "AnchorOS service interface for opportunity, evidence, and deterministic "
+                "Knowledge Module lifecycle management. Sprint 3 adds versioned module "
+                "definitions, persisted Knowledge Reviews, evidence traceability, replay "
+                "hashes, supersession, dynamic staleness, and lifecycle eligibility."
             ),
         },
         "servers": [{"url": "http://127.0.0.1:8080"}],
         "tags": [
             {"name": "Opportunities"},
             {"name": "Evidence"},
+            {"name": "Knowledge"},
             {"name": "Assessments"},
             {"name": "Reports"},
             {"name": "Lifecycle"},
@@ -196,6 +209,86 @@ def build_openapi() -> dict:
                             "content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}},
                         },
                         "404": {"description": "Record or attached file not found"},
+                    },
+                },
+            },
+            "/knowledge-modules": {
+                "get": {
+                    "tags": ["Knowledge"],
+                    "summary": "List active version-controlled Knowledge Modules",
+                    "responses": {"200": {"description": "Knowledge Module collection"}},
+                }
+            },
+            "/knowledge-modules/{module_id}": {
+                "parameters": [module_parameter],
+                "get": {
+                    "tags": ["Knowledge"],
+                    "summary": "Retrieve a Knowledge Module definition and integrity hash",
+                    "responses": {
+                        "200": {"description": "Knowledge Module"},
+                        "404": {"description": "Knowledge Module not found"},
+                    },
+                },
+            },
+            "/opportunities/{opportunity_id}/knowledge-reviews": {
+                "parameters": [opportunity_parameter],
+                "get": {
+                    "tags": ["Knowledge"],
+                    "summary": "List persisted Knowledge Reviews with dynamic staleness",
+                    "responses": {
+                        "200": {"description": "Knowledge Review collection"},
+                        "404": {"description": "Opportunity not found"},
+                    },
+                },
+                "post": {
+                    "tags": ["Knowledge"],
+                    "summary": "Run a deterministic Knowledge Module review",
+                    "requestBody": {
+                        "required": True,
+                        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/KnowledgeReviewRun"}}},
+                    },
+                    "responses": {
+                        "201": {"description": "Knowledge Review persisted"},
+                        "400": {"description": "Invalid review request"},
+                        "404": {"description": "Opportunity or module not found"},
+                        "409": {"description": "Opportunity archived or module inactive"},
+                        "422": {"description": "No deterministic module executor is installed"},
+                    },
+                },
+            },
+            "/opportunities/{opportunity_id}/knowledge-reviews/{review_id}": {
+                "parameters": [opportunity_parameter, review_parameter],
+                "get": {
+                    "tags": ["Knowledge"],
+                    "summary": "Retrieve a Knowledge Review and evidence trace",
+                    "responses": {
+                        "200": {"description": "Knowledge Review"},
+                        "404": {"description": "Opportunity or review not found"},
+                    },
+                },
+            },
+            "/opportunities/{opportunity_id}/knowledge-reviews/{review_id}/complete": {
+                "parameters": [opportunity_parameter, review_parameter],
+                "post": {
+                    "tags": ["Knowledge"],
+                    "summary": "Complete a current draft Knowledge Review",
+                    "requestBody": {"required": False, "content": {"application/json": {"schema": {"type": "object", "properties": {"revision": {"type": "integer"}}}}}},
+                    "responses": {
+                        "200": {"description": "Review completed"},
+                        "404": {"description": "Review not found"},
+                        "409": {"description": "Review stale, superseded, or revision conflict"},
+                    },
+                },
+            },
+            "/opportunities/{opportunity_id}/knowledge-reviews/{review_id}/supersede": {
+                "parameters": [opportunity_parameter, review_parameter],
+                "post": {
+                    "tags": ["Knowledge"],
+                    "summary": "Rerun the module over current inputs and supersede the prior review",
+                    "responses": {
+                        "200": {"description": "Successor review persisted"},
+                        "404": {"description": "Review, opportunity, or module not found"},
+                        "409": {"description": "Review is not active"},
                     },
                 },
             },
@@ -351,7 +444,19 @@ def build_openapi() -> dict:
                         },
                         "notes": {"type": "string"},
                     },
-                }
+                },
+                "KnowledgeReviewRun": {
+                    "type": "object",
+                    "required": ["module_id"],
+                    "properties": {
+                        "module_id": {"type": "string", "example": "AKM-GEO-FL-001"},
+                        "review_status": {
+                            "type": "string",
+                            "enum": ["Draft", "Ready", "Incomplete", "Completed"],
+                            "default": "Completed",
+                        },
+                    },
+                },
             }
         },
     }

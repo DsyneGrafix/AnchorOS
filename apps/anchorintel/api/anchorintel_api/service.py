@@ -14,6 +14,7 @@ from spatial_engine.engine import InputError, SpatialEngine
 from spatial_engine.report import render_markdown
 
 from .errors import ApiError
+from .knowledge import KnowledgeModuleRegistry, execute_module, sha256_json
 from .repository import Repository
 
 
@@ -90,6 +91,8 @@ class AnchorIntelService:
         engine: SpatialEngine | None = None,
         evidence_storage_dir: str | Path | None = None,
         max_file_size: int = DEFAULT_MAX_FILE_SIZE,
+        module_registry: KnowledgeModuleRegistry | None = None,
+        knowledge_module_dir: str | Path | None = None,
     ):
         self.repository = repository
         self.engine = engine or SpatialEngine()
@@ -101,6 +104,11 @@ class AnchorIntelService:
         self.evidence_storage_dir = Path(evidence_storage_dir)
         self.evidence_storage_dir.mkdir(parents=True, exist_ok=True)
         self.max_file_size = max_file_size
+        self.module_registry = module_registry or KnowledgeModuleRegistry(
+            knowledge_module_dir
+        )
+        for module in self.module_registry.list(active_only=False):
+            self.repository.record_knowledge_module_loaded(module)
 
     @staticmethod
     def _validate_opportunity(record: dict[str, Any]) -> None:
@@ -127,21 +135,33 @@ class AnchorIntelService:
         self, opportunity_id: str, include_archived: bool = False
     ) -> dict[str, Any]:
         record = self.repository.get_opportunity(opportunity_id, include_archived)
+        active_evidence = self.repository.list_evidence(opportunity_id)
+        knowledge_reviews = [
+            self._annotate_knowledge_review(item)
+            for item in self.repository.list_knowledge_reviews(opportunity_id)
+        ]
+        current_review = next(
+            (item for item in knowledge_reviews if item["lifecycle_eligible"]), None
+        )
         workflow = record.get("workflow")
         if isinstance(workflow, list):
-            active_evidence = self.repository.list_evidence(opportunity_id)
             record["workflow"] = [
                 {
                     **step,
                     "state": "complete" if active_evidence else "pending",
                 }
                 if step.get("key") == "evidence"
+                else {
+                    **step,
+                    "state": "complete" if current_review else "pending",
+                }
+                if step.get("key") == "knowledge"
                 else dict(step)
                 for step in workflow
             ]
-        record["active_evidence_count"] = len(
-            self.repository.list_evidence(opportunity_id)
-        )
+        record["active_evidence_count"] = len(active_evidence)
+        record["knowledge_review_count"] = len(knowledge_reviews)
+        record["current_knowledge_review"] = current_review
         return record
 
     def list_opportunities(self, include_archived: bool = False) -> list[dict[str, Any]]:
@@ -436,6 +456,230 @@ class AnchorIntelService:
         if not path.is_file():
             raise ApiError(404, "evidence_file_not_found", "Stored evidence file was not found")
         return path, evidence
+
+    def list_knowledge_modules(self, active_only: bool = True) -> list[dict[str, Any]]:
+        return self.module_registry.list(active_only=active_only)
+
+    def get_knowledge_module(self, module_id: str) -> dict[str, Any]:
+        return self.module_registry.get(module_id)
+
+    @staticmethod
+    def _evidence_trace(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [
+            {
+                "evidence_id": item["evidence_id"],
+                "revision": item["revision"],
+                "sha256": item.get("sha256", ""),
+                "evidence_status": item.get("evidence_status", ""),
+                "evidence_confidence": item.get("evidence_confidence", "Unknown"),
+            }
+            for item in sorted(records, key=lambda value: value["evidence_id"])
+        ]
+
+    def _knowledge_review_inputs(
+        self, opportunity_id: str, module: dict[str, Any]
+    ) -> tuple[dict[str, Any], list[dict[str, Any]], list[str], list[dict[str, Any]], str]:
+        opportunity = self.repository.get_opportunity(opportunity_id)
+        active_evidence = self.repository.list_evidence(opportunity_id)
+        all_evidence = self.repository.list_evidence(
+            opportunity_id, include_archived=True
+        )
+        archived_ids = sorted(
+            item["evidence_id"] for item in all_evidence if item.get("archived")
+        )
+        trace = self._evidence_trace(active_evidence)
+        evidence_snapshot = []
+        for item in sorted(active_evidence, key=lambda value: value["evidence_id"]):
+            clean = clean_system_fields(item)
+            clean["revision"] = item["revision"]
+            evidence_snapshot.append(clean)
+        snapshot = {
+            "module": {
+                "module_id": module["module_id"],
+                "version": module["version"],
+                "integrity_hash": module["integrity_hash"],
+            },
+            "opportunity": {
+                **clean_system_fields(opportunity),
+                "revision": opportunity["revision"],
+            },
+            "active_evidence": evidence_snapshot,
+            "evidence_trace": trace,
+            "excluded_archived_evidence_ids": archived_ids,
+        }
+        return opportunity, active_evidence, archived_ids, trace, sha256_json(snapshot)
+
+    def run_knowledge_review(
+        self,
+        opportunity_id: str,
+        module_id: str,
+        actor: str,
+        review_status: str = "Completed",
+        supersedes_review_id: str | None = None,
+    ) -> dict[str, Any]:
+        module = self.module_registry.get(module_id)
+        if module["status"] != "Active":
+            raise ApiError(
+                409,
+                "knowledge_module_inactive",
+                f"Knowledge Module {module_id} is not active",
+            )
+        opportunity, active_evidence, archived_ids, trace, snapshot_hash = (
+            self._knowledge_review_inputs(opportunity_id, module)
+        )
+        try:
+            output = execute_module(module, opportunity, active_evidence, archived_ids)
+        except ApiError as exc:
+            failed_output = {
+                "module_id": module_id,
+                "module_version": module["version"],
+                "confidence": "Unknown",
+                "findings": [],
+                "assumptions": [],
+                "unknowns": [],
+                "risks": [],
+                "missing_evidence": [],
+                "consumed_evidence_ids": [item["evidence_id"] for item in trace],
+                "failure": {"code": exc.code, "message": exc.message},
+            }
+            failed = self.repository.create_knowledge_review(
+                {
+                    "opportunity_id": opportunity_id,
+                    "module_id": module_id,
+                    "module_version": module["version"],
+                    "module_integrity_hash": module["integrity_hash"],
+                    "opportunity_revision": opportunity["revision"],
+                    "evidence_trace": trace,
+                    "input_snapshot_hash": snapshot_hash,
+                    "output": failed_output,
+                    "output_hash": sha256_json(failed_output),
+                    "review_status": "Incomplete",
+                    "confidence": "Unknown",
+                    "reviewer_source": actor,
+                },
+                actor,
+                supersedes_review_id,
+            )
+            self.repository.record_knowledge_review_failed(failed, actor, exc)
+            raise ApiError(
+                exc.status,
+                exc.code,
+                exc.message,
+                {**exc.details, "failed_review_id": failed["review_id"]},
+            ) from exc
+        record = {
+            "opportunity_id": opportunity_id,
+            "module_id": module_id,
+            "module_version": module["version"],
+            "module_integrity_hash": module["integrity_hash"],
+            "opportunity_revision": opportunity["revision"],
+            "evidence_trace": trace,
+            "input_snapshot_hash": snapshot_hash,
+            "output": output,
+            "output_hash": sha256_json(output),
+            "review_status": review_status,
+            "confidence": output["confidence"],
+            "reviewer_source": actor,
+        }
+        result = self.repository.create_knowledge_review(
+            record, actor, supersedes_review_id
+        )
+        return self._annotate_knowledge_review(result)
+
+    def _annotate_knowledge_review(
+        self, record: dict[str, Any]
+    ) -> dict[str, Any]:
+        review = dict(record)
+        reasons: list[str] = []
+        try:
+            opportunity = self.repository.get_opportunity(
+                review["opportunity_id"], include_archived=True
+            )
+        except ApiError:
+            reasons.append("The opportunity is no longer available.")
+            opportunity = None
+        if opportunity is not None:
+            if opportunity.get("archived"):
+                reasons.append("The opportunity is archived.")
+            if opportunity.get("revision") != review.get("opportunity_revision"):
+                reasons.append("The opportunity revision has changed.")
+            current_trace = self._evidence_trace(
+                self.repository.list_evidence(review["opportunity_id"])
+            )
+            if current_trace != review.get("evidence_trace", []):
+                reasons.append("The active evidence trace has changed.")
+        try:
+            module = self.module_registry.get(review["module_id"])
+        except ApiError:
+            reasons.append("The reviewed Knowledge Module is unavailable.")
+        else:
+            if module["status"] != "Active":
+                reasons.append("The reviewed Knowledge Module is not active.")
+            if module["version"] != review.get("module_version"):
+                reasons.append("The Knowledge Module version has changed.")
+            if module["integrity_hash"] != review.get("module_integrity_hash"):
+                reasons.append("The Knowledge Module integrity hash has changed.")
+        review["stale"] = bool(reasons)
+        review["stale_reasons"] = reasons
+        review["lifecycle_eligible"] = (
+            review.get("review_status") == "Completed" and not reasons
+        )
+        output = review.get("output", {})
+        review["summary"] = {
+            "finding_count": len(output.get("findings", [])),
+            "assumption_count": len(output.get("assumptions", [])),
+            "unknown_count": len(output.get("unknowns", [])),
+            "risk_count": len(output.get("risks", [])),
+            "missing_evidence_count": len(output.get("missing_evidence", [])),
+        }
+        if reasons and review.get("review_status") not in {"Superseded", "Archived"}:
+            self.repository.record_knowledge_review_stale(review, reasons)
+        return review
+
+    def list_knowledge_reviews(self, opportunity_id: str) -> list[dict[str, Any]]:
+        return [
+            self._annotate_knowledge_review(item)
+            for item in self.repository.list_knowledge_reviews(opportunity_id)
+        ]
+
+    def get_knowledge_review(
+        self, opportunity_id: str, review_id: str
+    ) -> dict[str, Any]:
+        return self._annotate_knowledge_review(
+            self.repository.get_knowledge_review(opportunity_id, review_id)
+        )
+
+    def complete_knowledge_review(
+        self,
+        opportunity_id: str,
+        review_id: str,
+        actor: str,
+        expected_revision: int | None = None,
+    ) -> dict[str, Any]:
+        current = self.get_knowledge_review(opportunity_id, review_id)
+        if current["stale"]:
+            raise ApiError(
+                409,
+                "knowledge_review_stale",
+                "A stale review cannot be completed; run the module again",
+                {"reasons": current["stale_reasons"]},
+            )
+        result = self.repository.complete_knowledge_review(
+            opportunity_id, review_id, actor, expected_revision
+        )
+        return self._annotate_knowledge_review(result)
+
+    def supersede_knowledge_review(
+        self, opportunity_id: str, review_id: str, actor: str
+    ) -> dict[str, Any]:
+        current = self.repository.get_knowledge_review(opportunity_id, review_id)
+        return self.run_knowledge_review(
+            opportunity_id,
+            current["module_id"],
+            actor,
+            review_status="Completed",
+            supersedes_review_id=review_id,
+        )
 
     def patch_evidence(
         self,

@@ -2,6 +2,10 @@
 data/*.db
 data/*.db-wal
 data/*.db-shm
+data/backups/
+backups/
+*-backup/
+*-failed/
 
 # Customer-uploaded evidence is runtime data, never source control.
 data/evidence-files/*
@@ -10,3 +14,4 @@ data/evidence-files/*
 # Python runtime artifacts
 __pycache__/
 *.py[cod]
+*.zip

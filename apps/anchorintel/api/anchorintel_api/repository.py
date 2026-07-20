@@ -102,6 +102,26 @@ class Repository:
                 CREATE INDEX IF NOT EXISTS assessments_opportunity_idx
                     ON assessments(opportunity_id, created_at DESC);
 
+                CREATE TABLE IF NOT EXISTS knowledge_reviews (
+                    review_id TEXT PRIMARY KEY,
+                    opportunity_id TEXT NOT NULL,
+                    module_id TEXT NOT NULL,
+                    module_version TEXT NOT NULL,
+                    record_json TEXT NOT NULL,
+                    review_status TEXT NOT NULL,
+                    confidence TEXT NOT NULL,
+                    supersedes_review_id TEXT,
+                    superseded_at TEXT,
+                    revision INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(opportunity_id) REFERENCES opportunities(opportunity_id),
+                    FOREIGN KEY(supersedes_review_id) REFERENCES knowledge_reviews(review_id)
+                );
+
+                CREATE INDEX IF NOT EXISTS knowledge_reviews_opportunity_idx
+                    ON knowledge_reviews(opportunity_id, created_at DESC);
+
                 CREATE TABLE IF NOT EXISTS lifecycle_events (
                     event_id TEXT PRIMARY KEY,
                     opportunity_id TEXT NOT NULL,
@@ -194,6 +214,26 @@ class Repository:
                 "state": row["classification"],
                 "archived": bool(row["archived"]),
                 "archived_at": row["archived_at"],
+                "revision": row["revision"],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+            }
+        )
+        return record
+
+    @staticmethod
+    def _knowledge_review_row(row: sqlite3.Row) -> dict[str, Any]:
+        record = json.loads(row["record_json"])
+        record.update(
+            {
+                "review_id": row["review_id"],
+                "opportunity_id": row["opportunity_id"],
+                "module_id": row["module_id"],
+                "module_version": row["module_version"],
+                "review_status": row["review_status"],
+                "confidence": row["confidence"],
+                "supersedes_review_id": row["supersedes_review_id"],
+                "superseded_at": row["superseded_at"],
                 "revision": row["revision"],
                 "created_at": row["created_at"],
                 "updated_at": row["updated_at"],
@@ -516,6 +556,353 @@ class Repository:
                 },
             )
         return self.get_evidence(evidence_id, opportunity_id=opportunity_id)
+
+    @staticmethod
+    def _next_review_id(db: sqlite3.Connection) -> str:
+        rows = db.execute(
+            "SELECT review_id FROM knowledge_reviews WHERE review_id GLOB 'KR-[0-9]*'"
+        ).fetchall()
+        used = {
+            int(row["review_id"][3:])
+            for row in rows
+            if row["review_id"][3:].isdigit()
+        }
+        number = 1
+        while number in used:
+            number += 1
+        return f"KR-{number:06d}"
+
+    def record_knowledge_module_loaded(
+        self, module: dict[str, Any], actor: str = "anchorintel-module-loader"
+    ) -> None:
+        with self.connect() as db:
+            self._audit(
+                db,
+                actor,
+                "knowledge_module.loaded",
+                "knowledge_module",
+                module["module_id"],
+                {
+                    "event_type": "knowledge_module.loaded",
+                    "module_id": module["module_id"],
+                    "module_version": module["version"],
+                    "module_integrity_hash": module["integrity_hash"],
+                    "status": module["status"],
+                    "summary": "Version-controlled Knowledge Module loaded and integrity checked",
+                },
+            )
+
+    def create_knowledge_review(
+        self,
+        record: dict[str, Any],
+        actor: str,
+        supersedes_review_id: str | None = None,
+    ) -> dict[str, Any]:
+        opportunity_id = record["opportunity_id"]
+        self.get_opportunity(opportunity_id)
+        status = record["review_status"]
+        if status not in {"Draft", "Ready", "Incomplete", "Completed"}:
+            raise ApiError(400, "invalid_review_status", "Review cannot be created in that status")
+        now = utcnow()
+        with self.connect() as db:
+            review_id = record.get("review_id") or self._next_review_id(db)
+            prior: dict[str, Any] | None = None
+            if supersedes_review_id:
+                row = db.execute(
+                    "SELECT * FROM knowledge_reviews WHERE review_id = ? AND opportunity_id = ?",
+                    (supersedes_review_id, opportunity_id),
+                ).fetchone()
+                if row is None:
+                    raise ApiError(
+                        404,
+                        "knowledge_review_not_found",
+                        f"Knowledge review {supersedes_review_id} was not found",
+                    )
+                prior = self._knowledge_review_row(row)
+                if prior["review_status"] in {"Superseded", "Archived"}:
+                    raise ApiError(
+                        409,
+                        "knowledge_review_not_active",
+                        "Only an active review may be superseded",
+                    )
+
+            clean = dict(record)
+            clean.pop("review_id", None)
+            clean.pop("opportunity_id", None)
+            clean.pop("review_status", None)
+            clean.pop("confidence", None)
+            clean.pop("supersedes_review_id", None)
+            clean["module_id"] = record["module_id"]
+            clean["module_version"] = record["module_version"]
+            try:
+                db.execute(
+                    "INSERT INTO knowledge_reviews(review_id, opportunity_id, module_id, "
+                    "module_version, record_json, review_status, confidence, "
+                    "supersedes_review_id, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        review_id,
+                        opportunity_id,
+                        record["module_id"],
+                        record["module_version"],
+                        json.dumps(clean),
+                        status,
+                        record["confidence"],
+                        supersedes_review_id,
+                        now,
+                        now,
+                    ),
+                )
+            except sqlite3.IntegrityError as exc:
+                raise ApiError(
+                    409,
+                    "knowledge_review_exists",
+                    f"Knowledge review {review_id} already exists",
+                ) from exc
+
+            trace = clean.get("evidence_trace", [])
+            details = {
+                "opportunity_id": opportunity_id,
+                "review_id": review_id,
+                "module_id": record["module_id"],
+                "module_version": record["module_version"],
+                "module_integrity_hash": clean.get("module_integrity_hash", ""),
+                "opportunity_revision": clean.get("opportunity_revision"),
+                "evidence_trace": trace,
+                "result_summary": {
+                    "status": status,
+                    "confidence": record["confidence"],
+                    "finding_count": len(clean.get("output", {}).get("findings", [])),
+                    "unknown_count": len(clean.get("output", {}).get("unknowns", [])),
+                },
+            }
+            self._audit(
+                db,
+                actor,
+                "knowledge_review.started",
+                "knowledge_review",
+                review_id,
+                {**details, "event_type": "knowledge_review.started"},
+            )
+            if status == "Completed":
+                self._audit(
+                    db,
+                    actor,
+                    "knowledge_review.completed",
+                    "knowledge_review",
+                    review_id,
+                    {**details, "event_type": "knowledge_review.completed"},
+                )
+
+            if prior is not None:
+                prior_clean = {
+                    key: value
+                    for key, value in prior.items()
+                    if key
+                    not in {
+                        "review_id",
+                        "opportunity_id",
+                        "review_status",
+                        "confidence",
+                        "supersedes_review_id",
+                        "superseded_at",
+                        "revision",
+                        "created_at",
+                        "updated_at",
+                        "stale",
+                        "stale_reasons",
+                        "lifecycle_eligible",
+                    }
+                }
+                db.execute(
+                    "UPDATE knowledge_reviews SET record_json = ?, review_status = 'Superseded', "
+                    "superseded_at = ?, revision = revision + 1, updated_at = ? "
+                    "WHERE review_id = ?",
+                    (json.dumps(prior_clean), now, now, supersedes_review_id),
+                )
+                prior_details = {
+                    "event_type": "knowledge_review.superseded",
+                    "opportunity_id": opportunity_id,
+                    "review_id": supersedes_review_id,
+                    "module_id": prior["module_id"],
+                    "module_version": prior["module_version"],
+                    "opportunity_revision": prior.get("opportunity_revision"),
+                    "evidence_trace": prior.get("evidence_trace", []),
+                    "result_summary": {"status": "Superseded", "successor_review_id": review_id},
+                }
+                self._audit(
+                    db,
+                    actor,
+                    "knowledge_review.superseded",
+                    "knowledge_review",
+                    supersedes_review_id,
+                    prior_details,
+                )
+                self._audit(
+                    db,
+                    actor,
+                    "knowledge_review.rerun",
+                    "knowledge_review",
+                    review_id,
+                    {
+                        **details,
+                        "event_type": "knowledge_review.rerun",
+                        "supersedes_review_id": supersedes_review_id,
+                    },
+                )
+        return self.get_knowledge_review(opportunity_id, review_id)
+
+    def get_knowledge_review(
+        self, opportunity_id: str, review_id: str
+    ) -> dict[str, Any]:
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT * FROM knowledge_reviews WHERE review_id = ? AND opportunity_id = ?",
+                (review_id, opportunity_id),
+            ).fetchone()
+        if row is None:
+            raise ApiError(
+                404,
+                "knowledge_review_not_found",
+                f"Knowledge review {review_id} was not found",
+            )
+        return self._knowledge_review_row(row)
+
+    def list_knowledge_reviews(self, opportunity_id: str) -> list[dict[str, Any]]:
+        self.get_opportunity(opportunity_id, include_archived=True)
+        with self.connect() as db:
+            rows = db.execute(
+                "SELECT * FROM knowledge_reviews WHERE opportunity_id = ? "
+                "ORDER BY created_at DESC, review_id DESC",
+                (opportunity_id,),
+            ).fetchall()
+        return [self._knowledge_review_row(row) for row in rows]
+
+    def complete_knowledge_review(
+        self,
+        opportunity_id: str,
+        review_id: str,
+        actor: str,
+        expected_revision: int | None = None,
+    ) -> dict[str, Any]:
+        current = self.get_knowledge_review(opportunity_id, review_id)
+        if current["review_status"] == "Completed":
+            return current
+        if current["review_status"] not in {"Draft", "Ready", "Incomplete"}:
+            raise ApiError(409, "knowledge_review_not_active", "Review cannot be completed")
+        if expected_revision is not None and current["revision"] != expected_revision:
+            raise ApiError(
+                409,
+                "revision_conflict",
+                "Knowledge review revision does not match If-Match",
+                {"expected": expected_revision, "actual": current["revision"]},
+            )
+        clean = {
+            key: value
+            for key, value in current.items()
+            if key
+            not in {
+                "review_id",
+                "opportunity_id",
+                "review_status",
+                "confidence",
+                "supersedes_review_id",
+                "superseded_at",
+                "revision",
+                "created_at",
+                "updated_at",
+                "stale",
+                "stale_reasons",
+                "lifecycle_eligible",
+            }
+        }
+        now = utcnow()
+        with self.connect() as db:
+            db.execute(
+                "UPDATE knowledge_reviews SET record_json = ?, review_status = 'Completed', "
+                "revision = revision + 1, updated_at = ? WHERE review_id = ?",
+                (json.dumps(clean), now, review_id),
+            )
+            self._audit(
+                db,
+                actor,
+                "knowledge_review.completed",
+                "knowledge_review",
+                review_id,
+                {
+                    "event_type": "knowledge_review.completed",
+                    "opportunity_id": opportunity_id,
+                    "review_id": review_id,
+                    "module_id": current["module_id"],
+                    "module_version": current["module_version"],
+                    "opportunity_revision": current.get("opportunity_revision"),
+                    "evidence_trace": current.get("evidence_trace", []),
+                    "result_summary": {
+                        "status": "Completed",
+                        "confidence": current["confidence"],
+                    },
+                },
+            )
+        return self.get_knowledge_review(opportunity_id, review_id)
+
+    def record_knowledge_review_failed(
+        self, review: dict[str, Any], actor: str, error: ApiError
+    ) -> None:
+        with self.connect() as db:
+            self._audit(
+                db,
+                actor,
+                "knowledge_review.failed",
+                "knowledge_review",
+                review["review_id"],
+                {
+                    "event_type": "knowledge_review.failed",
+                    "opportunity_id": review["opportunity_id"],
+                    "review_id": review["review_id"],
+                    "module_id": review["module_id"],
+                    "module_version": review["module_version"],
+                    "opportunity_revision": review.get("opportunity_revision"),
+                    "evidence_trace": review.get("evidence_trace", []),
+                    "result_summary": {
+                        "status": "Incomplete",
+                        "error_code": error.code,
+                        "message": error.message,
+                    },
+                },
+            )
+
+    def record_knowledge_review_stale(
+        self, review: dict[str, Any], reasons: list[str]
+    ) -> None:
+        with self.connect() as db:
+            existing = db.execute(
+                "SELECT 1 FROM audit_log WHERE action = 'knowledge_review.stale' "
+                "AND entity_type = 'knowledge_review' AND entity_id = ? LIMIT 1",
+                (review["review_id"],),
+            ).fetchone()
+            if existing is not None:
+                return
+            self._audit(
+                db,
+                "anchorintel-staleness-detector",
+                "knowledge_review.stale",
+                "knowledge_review",
+                review["review_id"],
+                {
+                    "event_type": "knowledge_review.stale",
+                    "opportunity_id": review["opportunity_id"],
+                    "review_id": review["review_id"],
+                    "module_id": review["module_id"],
+                    "module_version": review["module_version"],
+                    "opportunity_revision": review.get("opportunity_revision"),
+                    "evidence_trace": review.get("evidence_trace", []),
+                    "result_summary": {
+                        "status": review.get("review_status"),
+                        "stale": True,
+                        "reasons": reasons,
+                    },
+                },
+            )
 
     def create_assessment(
         self,

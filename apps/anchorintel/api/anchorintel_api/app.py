@@ -18,6 +18,10 @@ from .web import (
     error_page,
     evidence_detail,
     evidence_form,
+    knowledge_module_detail,
+    knowledge_module_list,
+    knowledge_review_detail,
+    knowledge_review_form,
     opportunity_detail,
     opportunity_edit,
     opportunity_list,
@@ -125,7 +129,7 @@ class AnchorIntelApplication:
         return fields, upload
 
     @staticmethod
-    def _evidence_json_request(
+    def _business_json_request(
         method: str, headers: dict[str, str]
     ) -> bool:
         if "application/json" in headers.get("content-type", "").lower():
@@ -152,13 +156,12 @@ class AnchorIntelApplication:
                 method.upper(), path, query, normalized_headers, body, actor
             )
         except ApiError as exc:
-            evidence_json = "/evidence" in path and self._evidence_json_request(
-                method.upper(), normalized_headers
-            )
+            business_json = self._business_json_request(method.upper(), normalized_headers)
             if (
                 path == "/opportunities"
                 or path.startswith("/opportunities/")
-            ) and not evidence_json:
+                or path.startswith("/knowledge-modules")
+            ) and not business_json:
                 response = Response.text(
                     exc.status, error_page(exc.status, exc.message), "text/html; charset=utf-8"
                 )
@@ -193,7 +196,7 @@ class AnchorIntelApplication:
         if method == "GET" and path == "/":
             return Response.redirect("/opportunities")
         if method == "GET" and path == "/health":
-            return Response.json(200, {"status": "ok", "service": "anchorintel-api", "version": "0.2.0"})
+            return Response.json(200, {"status": "ok", "service": "anchorintel-api", "version": "0.3.0"})
         if method == "GET" and path == "/v1/openapi.json":
             return Response.json(200, build_openapi())
 
@@ -206,6 +209,23 @@ class AnchorIntelApplication:
                     self.service.list_opportunities(include_archived), include_archived, notice
                 ),
                 "text/html; charset=utf-8",
+            )
+
+        if method == "GET" and path == "/knowledge-modules":
+            modules = self.service.list_knowledge_modules()
+            if self._business_json_request(method, headers):
+                return Response.json(200, {"items": modules})
+            return Response.text(
+                200, knowledge_module_list(modules), "text/html; charset=utf-8"
+            )
+
+        match = re.fullmatch(r"/knowledge-modules/([^/]+)", path)
+        if match and method == "GET":
+            module = self.service.get_knowledge_module(match.group(1))
+            if self._business_json_request(method, headers):
+                return Response.json(200, module)
+            return Response.text(
+                200, knowledge_module_detail(module), "text/html; charset=utf-8"
             )
 
         match = re.fullmatch(r"/opportunities/([^/]+)/edit", path)
@@ -249,7 +269,7 @@ class AnchorIntelApplication:
                 records = self.service.list_managed_evidence(
                     opportunity_id, include_archived
                 )
-                if self._evidence_json_request(method, headers):
+                if self._business_json_request(method, headers):
                     return Response.json(200, {"items": records})
                 opportunity = self.service.get_opportunity(opportunity_id)
                 return Response.text(
@@ -273,7 +293,7 @@ class AnchorIntelApplication:
                 location = (
                     f"/opportunities/{opportunity_id}/evidence/{result['evidence_id']}"
                 )
-                if "application/json" in content_type or self._evidence_json_request(
+                if "application/json" in content_type or self._business_json_request(
                     method, headers
                 ):
                     return Response.json(201, result, {"Location": location})
@@ -331,7 +351,7 @@ class AnchorIntelApplication:
                 "anchorintel-ui" if actor == "anonymous" else actor,
                 revision,
             )
-            if "application/json" in content_type or self._evidence_json_request(method, headers):
+            if "application/json" in content_type or self._business_json_request(method, headers):
                 return Response.json(200, result)
             return Response.redirect(
                 f"/opportunities/{opportunity_id}?notice=Evidence+archived"
@@ -359,7 +379,7 @@ class AnchorIntelApplication:
             opportunity_id, evidence_id = match.groups()
             if method == "GET":
                 result = self.service.get_managed_evidence(opportunity_id, evidence_id)
-                if self._evidence_json_request(method, headers):
+                if self._business_json_request(method, headers):
                     return Response.json(200, result, {"ETag": f'"{result["revision"]}"'})
                 return Response.text(
                     200,
@@ -377,6 +397,123 @@ class AnchorIntelApplication:
                     self._expected_revision(headers),
                 )
                 return Response.json(200, result, {"ETag": f'"{result["revision"]}"'})
+
+        match = re.fullmatch(r"/opportunities/([^/]+)/knowledge-reviews/new", path)
+        if match and method == "GET":
+            opportunity_id = match.group(1)
+            return Response.text(
+                200,
+                knowledge_review_form(
+                    self.service.get_opportunity(opportunity_id),
+                    self.service.list_knowledge_modules(),
+                ),
+                "text/html; charset=utf-8",
+            )
+
+        match = re.fullmatch(r"/opportunities/([^/]+)/knowledge-reviews", path)
+        if match:
+            opportunity_id = match.group(1)
+            if method == "GET":
+                reviews = self.service.list_knowledge_reviews(opportunity_id)
+                if self._business_json_request(method, headers):
+                    return Response.json(200, {"items": reviews})
+                return Response.text(
+                    200,
+                    opportunity_detail(
+                        self.service.get_opportunity(opportunity_id),
+                        self.service.list_managed_evidence(
+                            opportunity_id, include_archived=True
+                        ),
+                        knowledge_reviews=reviews,
+                        knowledge_modules=self.service.list_knowledge_modules(),
+                    ),
+                    "text/html; charset=utf-8",
+                )
+            if method == "POST":
+                content_type = headers.get("content-type", "").lower()
+                request = (
+                    self._json_body(body)
+                    if "application/json" in content_type
+                    else self._form_body(body)
+                )
+                module_id = str(request.get("module_id", "")).strip()
+                if not module_id:
+                    raise ApiError(
+                        400, "invalid_knowledge_review", "module_id is required"
+                    )
+                result = self.service.run_knowledge_review(
+                    opportunity_id,
+                    module_id,
+                    "anchorintel-ui" if actor == "anonymous" else actor,
+                    str(request.get("review_status", "Completed")),
+                )
+                location = f"/opportunities/{opportunity_id}/knowledge-reviews/{result['review_id']}"
+                if "application/json" in content_type or self._business_json_request(
+                    method, headers
+                ):
+                    return Response.json(201, result, {"Location": location})
+                return Response.redirect(location)
+
+        match = re.fullmatch(
+            r"/opportunities/([^/]+)/knowledge-reviews/([^/]+)/(complete|supersede)",
+            path,
+        )
+        if match and method == "POST":
+            opportunity_id, review_id, action = match.groups()
+            content_type = headers.get("content-type", "").lower()
+            request = (
+                self._json_body(body)
+                if "application/json" in content_type
+                else self._form_body(body)
+            )
+            if action == "complete":
+                raw_revision = request.get("revision")
+                try:
+                    revision = (
+                        int(raw_revision)
+                        if raw_revision not in {None, ""}
+                        else self._expected_revision(headers)
+                    )
+                except (TypeError, ValueError) as exc:
+                    raise ApiError(
+                        400, "invalid_revision", "Revision must be an integer"
+                    ) from exc
+                result = self.service.complete_knowledge_review(
+                    opportunity_id,
+                    review_id,
+                    "anchorintel-ui" if actor == "anonymous" else actor,
+                    revision,
+                )
+            else:
+                result = self.service.supersede_knowledge_review(
+                    opportunity_id,
+                    review_id,
+                    "anchorintel-ui" if actor == "anonymous" else actor,
+                )
+            location = f"/opportunities/{opportunity_id}/knowledge-reviews/{result['review_id']}"
+            if "application/json" in content_type or self._business_json_request(
+                method, headers
+            ):
+                return Response.json(200, result, {"Location": location})
+            return Response.redirect(location)
+
+        match = re.fullmatch(
+            r"/opportunities/([^/]+)/knowledge-reviews/([^/]+)", path
+        )
+        if match and method == "GET":
+            opportunity_id, review_id = match.groups()
+            result = self.service.get_knowledge_review(opportunity_id, review_id)
+            if self._business_json_request(method, headers):
+                return Response.json(
+                    200, result, {"ETag": f'"{result["revision"]}"'}
+                )
+            return Response.text(
+                200,
+                knowledge_review_detail(
+                    self.service.get_opportunity(opportunity_id), result
+                ),
+                "text/html; charset=utf-8",
+            )
 
         match = re.fullmatch(r"/opportunities/([^/]+)/archive", path)
         if match and method == "POST":
@@ -399,6 +536,8 @@ class AnchorIntelApplication:
                         match.group(1), include_archived=True
                     ),
                     query.get("notice", [""])[0],
+                    self.service.list_knowledge_reviews(match.group(1)),
+                    self.service.list_knowledge_modules(),
                 ),
                 "text/html; charset=utf-8",
             )

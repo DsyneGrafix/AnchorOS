@@ -14,7 +14,7 @@ from .service import AnchorIntelService
 
 def handler_for(application: AnchorIntelApplication):
     class Handler(BaseHTTPRequestHandler):
-        server_version = "AnchorIntelAPI/0.2.0"
+        server_version = "AnchorIntelAPI/0.3.0"
 
         def _serve(self):
             length = int(self.headers.get("Content-Length", "0"))
@@ -85,6 +85,16 @@ def main(argv: list[str] | None = None) -> int:
             print(
                 f"Reference evidence {references['evidence']['evidence_id']} "
                 f"{evidence_action}"
+            )
+        if references["knowledge_review"] is None:
+            print("Reference knowledge review skipped because its persisted inputs are unavailable")
+        else:
+            review_action = (
+                "created" if references["knowledge_review_created"] else "already present"
+            )
+            print(
+                f"Reference knowledge review {references['knowledge_review']['review_id']} "
+                f"{review_action}"
             )
     application = AnchorIntelApplication(service)
     server = create_server(application, args.host, args.port)

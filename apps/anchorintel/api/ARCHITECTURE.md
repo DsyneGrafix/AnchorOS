@@ -2,113 +2,118 @@
 
 ## Decision-operating-system boundary
 
-The long-range operating loop is:
-
 ```text
 Research → Evidence → Knowledge Modules → Opportunity → Assessment
          → Decision → Lifecycle → Revalidation → Learning → Knowledge Library
 ```
 
-Sprint 2 changes only the Evidence → Opportunity boundary. It establishes a
-production-oriented evidence record and file-storage interface while preserving
-the existing Opportunity, assessment, reporting, lifecycle, and administration
-services. Research acquisition, Knowledge Modules, new S.P.A.T.I.A.L. work, and
-the Executive Opportunity Dossier remain outside this sprint.
+Sprint 3 implements only the Evidence → Knowledge Modules → Opportunity seam.
+It preserves the Sprint 1 and Sprint 2 services and prepares structured output
+for later assessment without changing S.P.A.T.I.A.L., reporting, or dossier
+behavior.
 
 ## Layering
 
 ```text
-Clients / AnchorFiber / Opportunity workspace
-                    ↓ HTTP /v1 and server-rendered commands
-AnchorIntel business services and lifecycle controls
-                    ↓ stable adapter
-S.P.A.T.I.A.L. assessment engine
-                    ↓
-SQLite metadata, external evidence files, assessment snapshots, audit events
-                    ↑
-AnchorOS register / start / stop / health
+Browser / API clients / future AnchorFiber applications
+                         ↓
+AnchorIntel business services and lifecycle derivation
+                         ↓
+Opportunity + active evidence snapshots
+                         ↓
+Versioned local Knowledge Module registry and deterministic executor
+                         ↓
+SQLite review records, evidence traces, replay hashes, audit events
+                         ↓
+Existing S.P.A.T.I.A.L. adapter (unchanged in Sprint 3)
 ```
 
-The API owns resource identity, revisions, evidence transitions, lifecycle events, persistence, audit, and reports. The Opportunity workspace calls the same business service as API clients, so edits and archives preserve identical validation, concurrency, and audit behavior. The engine owns validation, scoring, confidence, gates, warnings, and deterministic recommendation. Clients never call a public `calculate_score` function.
+AnchorOS supplies platform lifecycle and future authenticated gateway services.
+AnchorIntel owns opportunity, evidence, knowledge-review, assessment, reporting,
+and lifecycle contracts. S.P.A.T.I.A.L. owns its assessment methodology. Domain
+applications consume these stable capabilities rather than importing internal
+calculations.
 
-`OI-000001` is installed through an idempotent bootstrap. Bootstrap never
-overwrites an existing active or archived record, protecting manual edits,
-linked evidence, and audit history.
+## Source definitions versus runtime records
 
-## Sprint 2 evidence boundary
-
-Evidence has two deliberately separated persistence surfaces:
-
-| Surface | Stored content | Location |
+| Surface | Content | Location |
 |---|---|---|
-| SQLite | IDs, opportunity relationship, controlled metadata, revision, archive state, timestamps, original filename, storage name, size, type, SHA-256 | `data/anchorintel.db` |
-| File store | Uploaded bytes only | `data/evidence-files/` |
+| Knowledge Module source | ID, version, scope, questions, criteria, evidence categories, limitations, dates, output schema, integrity hash | `anchorintel_api/knowledge_modules/*.json` |
+| Knowledge Review runtime | Module/version/hash, opportunity revision, evidence trace, input/output hashes, output, confidence, status, revisions, supersession, timestamps | SQLite `knowledge_reviews` |
+| Evidence metadata | Controlled metadata, revision, archive state, file metadata and hash | SQLite `evidence` |
+| Evidence bytes | Uploaded file content | `data/evidence-files/` |
 
-Uploaded bytes are never SQLite blobs. The service rejects path-bearing or
-control-character filenames, generates a UUID-based storage name, writes the
-file exclusively, calculates SHA-256, and stores the original filename only as
-metadata. The 10 MiB default upload limit is enforced for both the multipart
-request and decoded file. File replacement is intentionally deferred so a
-metadata revision cannot silently alter the bytes supporting an evidence
-record.
+Module loading validates required fields, ID format, dates, status, question
+shape, uniqueness, and canonical SHA-256 integrity. Invalid or modified modules
+fail closed at registry construction.
 
-The public evidence ID is sequential (`EV-000001`, `EV-000002`, ...). SQLite's
-row ID is surfaced as the internal database ID but is not used in routes.
-Metadata revisions use integer optimistic concurrency. Normal application
-operations archive rather than delete evidence, and archived file bytes remain
-available for review.
+## Deterministic execution
 
-## Safe schema initialization
+The `AKM-GEO-FL-001` executor accepts no network, model, or clock input. The
+review snapshot consists of:
 
-Repository startup creates current tables when absent and inspects
-`PRAGMA table_info(evidence)` when upgrading Sprint 1. It adds only the missing
-`archived` and `archived_at` columns and the active-evidence index. Existing
-opportunity, evidence, assessment, lifecycle, and audit rows are not rewritten.
-The process is idempotent and is covered by a migration regression test.
+1. module ID, version, and integrity hash;
+2. persisted opportunity fields and revision;
+3. sorted active evidence records and revisions;
+4. exact evidence trace; and
+5. sorted IDs of archived evidence excluded from active inputs.
 
-Because SQLite cannot remove columns through this migration, the installation
-procedure requires a database backup before first Sprint 2 startup. Sprint 1
-code ignores the two additive columns, but the backup remains the authoritative
-rollback point.
+Canonical JSON produces an input snapshot hash. The structured result is also
+canonicalized and hashed. Two executions over identical inputs produce equal
+input hashes, output objects, and output hashes. Execution identity and time are
+stored separately in the review row, so they do not introduce output variance.
 
-## Resource invariants
+## Review persistence and supersession
 
-| Resource | Invariant |
+Public IDs are sequential (`KR-000001`, `KR-000002`, ...). Normal rerun creates
+a new row linked by `supersedes_review_id`, changes the prior row to
+`Superseded`, and records both supersession and rerun audit events. Prior output
+is preserved. A failed executor creates an `Incomplete` review with `Unknown`
+confidence and records a failure audit event.
+
+## Dynamic staleness and continuation validity
+
+A completed review is lifecycle-eligible only while the conditions that
+justified it remain true:
+
+| Condition | Stale when |
 |---|---|
-| Opportunity | May be saved as an incomplete draft; must satisfy the engine contract before assessment |
-| Evidence | Belongs to one active opportunity; managed metadata uses controlled values; files live outside SQLite; promotion to S or V remains on the inherited verification interface |
-| Assessment | Immutable snapshot of the opportunity and all current evidence plus engine result |
-| Report | Projection of a stored assessment, so later record edits cannot rewrite history |
-| Lifecycle event | Records prior state, resulting state, triggering assessment, reason, and time |
-| Audit entry | Application actor/action record for mutations and assessment runs; no tamper-evidence or independent verification is claimed |
+| Opportunity | Archived or revision differs |
+| Evidence | Current active evidence trace differs by ID, revision, file hash, status, or confidence |
+| Module | Missing, inactive, version differs, or integrity hash differs |
+| Review | Not `Completed` or already superseded |
 
-## Opportunity workflow derivation
+Stale records remain visible and traceable but cannot complete Knowledge Module
+Review. The first detection is audited once. Rerun is the recovery mechanism.
+This enforces a narrow continuation-validity rule: the review does not outlive
+the persisted conditions that justified it.
 
-The Opportunity Service queries persisted evidence every time it assembles an
-opportunity detail record. `Attach Evidence` is complete when the opportunity
-has one or more non-archived evidence rows and pending otherwise. The rule
-contains no OI-000001 special case. Knowledge review, assessment, dossier, and
-archive steps remain unchanged and incomplete in the reference workflow.
+## Additive schema initialization
 
-## Evidence audit events
+Repository startup creates `knowledge_reviews` and its opportunity/date index
+with `CREATE TABLE IF NOT EXISTS`. The existing Sprint 2 evidence-column checks
+remain. No existing table is dropped or rewritten. The migration is idempotent,
+but rollback still requires the pre-installation database backup because Sprint
+2 code does not understand Sprint 3 review records.
 
-Sprint 2 records `evidence.created`, `evidence.file_uploaded`,
-`evidence.metadata_updated`, and `evidence.archived`. Each event includes the
-evidence ID, opportunity ID, resulting revision, timestamp supplied by the audit
-row, and a relevant change summary. The audit log is application-level SQLite
-history, not an immutable ledger.
+## Lifecycle derivation
 
-## Lifecycle state
+The opportunity service derives workflow state on every read:
 
-An opportunity begins `Unassessed`. A successful assessment sets its operational queue to the engine recommendation: `Pursue`, `Validate`, `Monitor`, `Hold`, or `Reject`. The v1 dashboard-oriented endpoints expose Hold, Monitor, Pursue, and due-review queues. Validate and Reject remain visible through the opportunity resource and can receive dedicated routes without changing stored state.
+- Attach Evidence: complete when at least one non-archived evidence row exists.
+- Knowledge Module Review: complete when at least one current, active,
+  lifecycle-eligible completed review exists.
+- S.P.A.T.I.A.L., dossier, and archive: unchanged and pending unless their
+  existing services change them outside Sprint 3.
 
-Archive sets the lifecycle state to `Archived` and excludes the opportunity from normal collections. Revalidation requires a prior assessment, optionally updates lifecycle controls, and creates an immutable successor assessment.
+There is no OI-000001 special case. Reference seeding calls the same review
+service used by future opportunities.
 
-## AnchorOS separation
+## Security boundary
 
-- **AnchorOS** supplies process lifecycle, authenticated gateway concerns, shared operational services, and module registration.
-- **AnchorIntel** supplies opportunity, evidence, assessment, reporting, revalidation, and learning-oriented service contracts.
-- **S.P.A.T.I.A.L.** supplies the methodology and deterministic assessment framework.
-- **AnchorFiber and future applications** consume the service and contribute domain records; they do not own the platform or engine lifecycle.
-
-This keeps platform, framework, and application responsibilities explicit while allowing the engine to evolve behind `/v1/assessments/run`.
+SHA-256 supports integrity comparison, replay identity, and module-change
+detection. It does not establish source truth, legal authenticity, independent
+verification, or immutable storage. The SQLite audit log is an application
+record and is not tamper-evident. Production identity, authorization, isolation,
+encryption, gateway, and availability controls remain outside this reference
+build.
