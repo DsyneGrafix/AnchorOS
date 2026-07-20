@@ -8,13 +8,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .app import AnchorIntelApplication
 from .repository import Repository
-from .reference import ensure_reference_records
 from .service import AnchorIntelService
 
 
 def handler_for(application: AnchorIntelApplication):
     class Handler(BaseHTTPRequestHandler):
-        server_version = "AnchorIntelAPI/0.2.0"
+        server_version = "AnchorIntelAPI/0.1.0"
 
         def _serve(self):
             length = int(self.headers.get("Content-Length", "0"))
@@ -56,41 +55,13 @@ def main(argv: list[str] | None = None) -> int:
         "--database",
         default=os.environ.get("ANCHORINTEL_DATABASE", "data/anchorintel.db"),
     )
-    parser.add_argument(
-        "--seed-reference",
-        action="store_true",
-        default=os.environ.get("ANCHORINTEL_SEED_REFERENCE", "0").lower()
-        in {"1", "true", "yes"},
-        help="idempotently create the BOOT-0020 OI-000001 reference opportunity",
-    )
     args = parser.parse_args(argv)
 
     repository = Repository(args.database)
-    service = AnchorIntelService(repository)
-    if args.seed_reference:
-        references = ensure_reference_records(service)
-        opportunity_action = (
-            "created" if references["opportunity_created"] else "already present"
-        )
-        print(
-            f"Reference opportunity {references['opportunity']['opportunity_id']} "
-            f"{opportunity_action}"
-        )
-        if references["evidence"] is None:
-            print("Reference evidence skipped because OI-000001 is archived")
-        else:
-            evidence_action = (
-                "created" if references["evidence_created"] else "already present"
-            )
-            print(
-                f"Reference evidence {references['evidence']['evidence_id']} "
-                f"{evidence_action}"
-            )
-    application = AnchorIntelApplication(service)
+    application = AnchorIntelApplication(AnchorIntelService(repository))
     server = create_server(application, args.host, args.port)
     bound_port = server.server_address[1]
     print(f"AnchorIntel API v1 listening on http://{args.host}:{bound_port}")
-    print(f"Opportunity workspace: http://{args.host}:{bound_port}/opportunities")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

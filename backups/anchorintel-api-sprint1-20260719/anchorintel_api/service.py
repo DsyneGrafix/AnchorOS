@@ -2,12 +2,7 @@
 
 from __future__ import annotations
 
-import hashlib
-import mimetypes
-import re
-import uuid
 from datetime import date
-from pathlib import Path
 from typing import Any
 
 from spatial_engine.engine import InputError, SpatialEngine
@@ -20,40 +15,6 @@ from .repository import Repository
 EVIDENCE_STATES = {"V", "S", "A", "U", "D"}
 PROMOTION = {"A": "S", "S": "V"}
 PROMOTION_RANK = {"U": 0, "D": 0, "A": 1, "S": 2, "V": 3}
-EVIDENCE_TYPES = {
-    "Document",
-    "Dataset",
-    "Web Source",
-    "Field Observation",
-    "Photograph",
-    "Correspondence",
-    "Regulatory Record",
-    "Financial Record",
-    "Technical Record",
-    "Other",
-}
-EVIDENCE_STATUSES = {
-    "Collected",
-    "Under Review",
-    "Accepted",
-    "Questioned",
-    "Superseded",
-    "Archived",
-}
-EVIDENCE_CONFIDENCE = {"Unknown", "Low", "Moderate", "High", "Verified"}
-EVIDENCE_EDITABLE = {
-    "title",
-    "evidence_type",
-    "source",
-    "source_date",
-    "date_collected",
-    "description",
-    "evidence_status",
-    "evidence_confidence",
-    "notes",
-}
-EVIDENCE_CREATE_FIELDS = EVIDENCE_EDITABLE | {"evidence_id"}
-DEFAULT_MAX_FILE_SIZE = 10 * 1024 * 1024
 OPPORTUNITY_REQUIRED = ("title", "geography", "infrastructure_class")
 OPPORTUNITY_EDITABLE = (
     "title",
@@ -70,37 +31,14 @@ def clean_system_fields(record: dict[str, Any]) -> dict[str, Any]:
     return {
         key: value
         for key, value in record.items()
-        if key
-        not in {
-            "internal_id",
-            "lifecycle_state",
-            "archived",
-            "archived_at",
-            "revision",
-            "created_at",
-            "updated_at",
-        }
+        if key not in {"lifecycle_state", "archived", "revision", "created_at", "updated_at"}
     }
 
 
 class AnchorIntelService:
-    def __init__(
-        self,
-        repository: Repository,
-        engine: SpatialEngine | None = None,
-        evidence_storage_dir: str | Path | None = None,
-        max_file_size: int = DEFAULT_MAX_FILE_SIZE,
-    ):
+    def __init__(self, repository: Repository, engine: SpatialEngine | None = None):
         self.repository = repository
         self.engine = engine or SpatialEngine()
-        if evidence_storage_dir is None:
-            if repository.database_path == ":memory:":
-                evidence_storage_dir = Path("data/evidence-files")
-            else:
-                evidence_storage_dir = Path(repository.database_path).parent / "evidence-files"
-        self.evidence_storage_dir = Path(evidence_storage_dir)
-        self.evidence_storage_dir.mkdir(parents=True, exist_ok=True)
-        self.max_file_size = max_file_size
 
     @staticmethod
     def _validate_opportunity(record: dict[str, Any]) -> None:
@@ -126,23 +64,7 @@ class AnchorIntelService:
     def get_opportunity(
         self, opportunity_id: str, include_archived: bool = False
     ) -> dict[str, Any]:
-        record = self.repository.get_opportunity(opportunity_id, include_archived)
-        workflow = record.get("workflow")
-        if isinstance(workflow, list):
-            active_evidence = self.repository.list_evidence(opportunity_id)
-            record["workflow"] = [
-                {
-                    **step,
-                    "state": "complete" if active_evidence else "pending",
-                }
-                if step.get("key") == "evidence"
-                else dict(step)
-                for step in workflow
-            ]
-        record["active_evidence_count"] = len(
-            self.repository.list_evidence(opportunity_id)
-        )
-        return record
+        return self.repository.get_opportunity(opportunity_id, include_archived)
 
     def list_opportunities(self, include_archived: bool = False) -> list[dict[str, Any]]:
         return self.repository.list_opportunities(include_archived)
@@ -207,235 +129,6 @@ class AnchorIntelService:
 
     def list_evidence(self, opportunity_id: str | None = None) -> list[dict[str, Any]]:
         return self.repository.list_evidence(opportunity_id)
-
-    @staticmethod
-    def _validate_managed_evidence(record: dict[str, Any]) -> None:
-        evidence_id = str(record.get("evidence_id", "")).strip()
-        if evidence_id and not re.fullmatch(r"EV-\d{6}", evidence_id):
-            raise ApiError(
-                400,
-                "invalid_evidence_id",
-                "Managed evidence IDs must use EV- followed by six digits",
-            )
-        if not str(record.get("title", "")).strip():
-            raise ApiError(400, "invalid_evidence", "title is required")
-        evidence_type = str(record.get("evidence_type", "")).strip()
-        if evidence_type not in EVIDENCE_TYPES:
-            raise ApiError(
-                400,
-                "invalid_evidence_type",
-                "evidence_type is not an allowed value",
-                {"allowed": sorted(EVIDENCE_TYPES)},
-            )
-        status = str(record.get("evidence_status", "")).strip()
-        if status not in EVIDENCE_STATUSES or status == "Archived":
-            raise ApiError(
-                400,
-                "invalid_evidence_status",
-                "evidence_status is not an allowed active value",
-                {"allowed": sorted(EVIDENCE_STATUSES - {"Archived"})},
-            )
-        confidence = str(record.get("evidence_confidence", "")).strip()
-        if confidence not in EVIDENCE_CONFIDENCE:
-            raise ApiError(
-                400,
-                "invalid_evidence_confidence",
-                "evidence_confidence is not an allowed value",
-                {"allowed": sorted(EVIDENCE_CONFIDENCE)},
-            )
-        if not str(record.get("date_collected", "")).strip():
-            raise ApiError(
-                400, "invalid_date", "date_collected is required and must use YYYY-MM-DD"
-            )
-        for field_name in ("source_date", "date_collected"):
-            value = str(record.get(field_name, "")).strip()
-            if not value:
-                continue
-            try:
-                date.fromisoformat(value)
-            except ValueError as exc:
-                raise ApiError(
-                    400, "invalid_date", f"{field_name} must use YYYY-MM-DD"
-                ) from exc
-
-    @staticmethod
-    def _validate_original_filename(filename: str) -> str:
-        if (
-            not filename
-            or filename != filename.strip()
-            or filename in {".", ".."}
-            or "/" in filename
-            or "\\" in filename
-            or '"' in filename
-            or any(ord(character) < 32 or ord(character) == 127 for character in filename)
-            or Path(filename).name != filename
-        ):
-            raise ApiError(
-                400,
-                "unsafe_filename",
-                "Uploaded filename must be a plain filename without paths or control characters",
-            )
-        return filename
-
-    def _store_evidence_file(
-        self, filename: str, content_type: str, content: bytes
-    ) -> dict[str, Any]:
-        safe_original = self._validate_original_filename(filename)
-        if len(content) > self.max_file_size:
-            raise ApiError(
-                413,
-                "file_too_large",
-                f"Evidence files may not exceed {self.max_file_size} bytes",
-            )
-        suffix = Path(safe_original).suffix.lower()
-        if not re.fullmatch(r"\.[a-z0-9]{1,10}", suffix):
-            suffix = ""
-        storage_name = f"{uuid.uuid4().hex}{suffix}"
-        destination = self.evidence_storage_dir / storage_name
-        with destination.open("xb") as stored_file:
-            stored_file.write(content)
-        file_type = content_type.strip() or mimetypes.guess_type(safe_original)[0] or "application/octet-stream"
-        return {
-            "file_name": safe_original,
-            "file_type": file_type,
-            "file_size": len(content),
-            "storage_name": storage_name,
-            "storage_location": f"evidence-files/{storage_name}",
-            "sha256": hashlib.sha256(content).hexdigest(),
-        }
-
-    def create_managed_evidence(
-        self,
-        opportunity_id: str,
-        fields: dict[str, Any],
-        actor: str,
-        upload: dict[str, Any] | None = None,
-    ) -> dict[str, Any]:
-        self.repository.get_opportunity(opportunity_id)
-        unknown_fields = sorted(set(fields) - EVIDENCE_CREATE_FIELDS)
-        if unknown_fields:
-            raise ApiError(
-                400,
-                "invalid_evidence_fields",
-                "Request contains unsupported evidence fields",
-                {"fields": unknown_fields},
-            )
-        record = {key: str(value).strip() for key, value in fields.items()}
-        record["opportunity_id"] = opportunity_id
-        record.setdefault("evidence_id", "")
-        record.setdefault("evidence_type", "Other")
-        record.setdefault("source", "")
-        record.setdefault("source_date", "")
-        if not record.get("date_collected"):
-            record["date_collected"] = date.today().isoformat()
-        record.setdefault("description", "")
-        record.setdefault("evidence_status", "Collected")
-        record.setdefault("evidence_confidence", "Unknown")
-        record.setdefault("notes", "")
-        record["claim"] = record["description"] or record.get("title", "")
-        record["state"] = "A"
-        record["material"] = True
-        stored: dict[str, Any] | None = None
-        if upload and upload.get("filename"):
-            stored = self._store_evidence_file(
-                str(upload["filename"]),
-                str(upload.get("content_type", "")),
-                bytes(upload.get("content", b"")),
-            )
-            record.update(stored)
-        else:
-            record.update(
-                {
-                    "file_name": "",
-                    "file_type": "",
-                    "file_size": 0,
-                    "storage_name": "",
-                    "storage_location": "",
-                    "sha256": "",
-                }
-            )
-        self._validate_managed_evidence(record)
-        try:
-            created = self.repository.create_evidence(record, actor)
-        except Exception:
-            if stored:
-                (self.evidence_storage_dir / stored["storage_name"]).unlink(
-                    missing_ok=True
-                )
-            raise
-        if stored:
-            self.repository.record_evidence_file_uploaded(created["evidence_id"], actor)
-        return created
-
-    def get_managed_evidence(
-        self, opportunity_id: str, evidence_id: str, include_archived: bool = True
-    ) -> dict[str, Any]:
-        self.repository.get_opportunity(opportunity_id, include_archived=True)
-        return self.repository.get_evidence(
-            evidence_id, opportunity_id=opportunity_id, include_archived=include_archived
-        )
-
-    def list_managed_evidence(
-        self, opportunity_id: str, include_archived: bool = False
-    ) -> list[dict[str, Any]]:
-        self.repository.get_opportunity(opportunity_id, include_archived=True)
-        return self.repository.list_evidence(opportunity_id, include_archived)
-
-    def update_managed_evidence(
-        self,
-        opportunity_id: str,
-        evidence_id: str,
-        patch: dict[str, Any],
-        actor: str,
-        expected_revision: int | None,
-    ) -> dict[str, Any]:
-        unknown_fields = sorted(set(patch) - EVIDENCE_EDITABLE)
-        if unknown_fields:
-            raise ApiError(
-                400,
-                "invalid_evidence_fields",
-                "Request contains unsupported evidence fields",
-                {"fields": unknown_fields},
-            )
-        current = self.get_managed_evidence(opportunity_id, evidence_id)
-        merged = clean_system_fields(current)
-        for key in EVIDENCE_EDITABLE:
-            if key in patch:
-                merged[key] = str(patch[key]).strip()
-        merged["opportunity_id"] = opportunity_id
-        merged["evidence_id"] = evidence_id
-        merged["claim"] = merged.get("description") or merged.get("title", "")
-        self._validate_managed_evidence(merged)
-        return self.repository.update_evidence(
-            evidence_id,
-            merged,
-            actor,
-            "evidence.metadata_updated",
-            expected_revision,
-        )
-
-    def archive_managed_evidence(
-        self,
-        opportunity_id: str,
-        evidence_id: str,
-        actor: str,
-        expected_revision: int | None,
-    ) -> dict[str, Any]:
-        return self.repository.archive_evidence(
-            opportunity_id, evidence_id, actor, expected_revision
-        )
-
-    def evidence_file(
-        self, opportunity_id: str, evidence_id: str
-    ) -> tuple[Path, dict[str, Any]]:
-        evidence = self.get_managed_evidence(opportunity_id, evidence_id)
-        storage_name = str(evidence.get("storage_name", ""))
-        if not storage_name or Path(storage_name).name != storage_name:
-            raise ApiError(404, "evidence_file_not_found", "Evidence has no attached file")
-        path = self.evidence_storage_dir / storage_name
-        if not path.is_file():
-            raise ApiError(404, "evidence_file_not_found", "Stored evidence file was not found")
-        return path, evidence
 
     def patch_evidence(
         self,

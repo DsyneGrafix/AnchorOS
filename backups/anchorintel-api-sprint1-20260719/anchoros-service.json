@@ -1,15 +1,12 @@
 {
   "service_id": "AOS-SVC-ANCHORINTEL-API",
   "name": "AnchorIntel API",
-  "version": "0.2.0",
+  "version": "0.1.0",
   "platform": "AnchorOS",
   "framework": "AnchorIntel",
   "entrypoint": "anchorintel_api.anchoros:AnchorIntelAnchorOSService",
   "capabilities": [
     "opportunity.lifecycle.manage",
-    "evidence.manage",
-    "evidence.file.store",
-    "evidence.file.hash.sha256",
     "evidence.classify",
     "evidence.verify",
     "spatial.assessment.run",
@@ -38,3 +35,4 @@
     "health": "health"
   }
 }
+

@@ -1,6 +1,6 @@
 # AnchorIntel API
 
-AnchorIntel API v0.2.0 is the AnchorOS-facing service interface for the S.P.A.T.I.A.L. infrastructure-opportunity lifecycle. Sprint 2 adds the first managed Evidence Service: evidence metadata, optional file storage, SHA-256 hashing, revision-controlled editing, recoverable archiving, audit events, and persisted lifecycle completion. It does not add Knowledge Module Review, new assessment behavior, or dossier generation.
+AnchorIntel API v0.1.0 is the AnchorOS-facing service interface for the complete S.P.A.T.I.A.L. infrastructure-opportunity assessment lifecycle. It exposes business capabilities—opportunities, evidence, assessments, reports, lifecycle queues, and revalidation—without exposing scoring functions as public endpoints.
 
 The service uses the deterministic `spatial-opportunity-engine` as its assessment framework and SQLite for durable local records. It requires Python 3.10 or newer and has no third-party runtime dependencies beyond the sibling engine package.
 
@@ -9,7 +9,7 @@ The service uses the deterministic `spatial-opportunity-engine` as its assessmen
 | Service | Capabilities |
 |---|---|
 | Opportunity | Create, list, retrieve, replace, and archive opportunity records; browser list/detail/edit/archive workspace |
-| Evidence | Create, list, retrieve, revise, archive, and download managed evidence; preserve the inherited A → S → V classification interface |
+| Evidence | Create, retrieve, reclassify, and promote evidence through controlled A → S → V transitions |
 | Assessment | Hydrate an opportunity with its evidence, run the engine, and preserve an immutable input/result snapshot |
 | Reporting | Return the stored assessment as JSON or Markdown |
 | Lifecycle | List Hold, Monitor, and Pursue queues; find reviews due; run traceable revalidation |
@@ -37,10 +37,8 @@ From the AnchorOS repository root, use the path-safe launcher:
 
 The service listens on `127.0.0.1:8080` by default. Open
 `http://127.0.0.1:8080/opportunities` to use the Opportunity workspace.
-`--seed-reference` idempotently creates `OI-000001` and the metadata-only
-reference evidence `EV-000001` without overwriting existing records. If the
-reference opportunity was previously archived and has no evidence, evidence
-seeding is safely skipped rather than bypassing archive controls. The launcher resolves its own absolute path, so
+`--seed-reference` idempotently creates `OI-000001` without overwriting an
+existing or archived record. The launcher resolves its own absolute path, so
 spaces in the parent directory name do not require special handling. Server
 arguments may be appended, for example
 `./apps/anchorintel/api/start-anchorintel.sh --port 8081`.
@@ -89,16 +87,9 @@ record for AnchorIntel:
 
 The seed records the BOOT-0020 workflow from opportunity creation through
 evidence, knowledge review, S.P.A.T.I.A.L. assessment, dossier generation, and
-archive. Create and Save remain complete. Attach Evidence is derived from
-persisted active evidence: it is complete while at least one active evidence
-record exists and returns to pending when all evidence is archived. Later
-stages remain incomplete.
-
-`EV-000001`, titled **Florida Electric Utility Asset Intelligence Context**, is
-a Sirius Logic Systems reference-analysis record with Moderate confidence. It
-is explicitly labeled as demonstration evidence—not an official Florida Power
-& Light document and not represented as supplied or endorsed by Florida Power
-& Light.
+archive. Sprint 1 marks Create and Save complete; later services advance the
+remaining stages. The bundled `data/anchorintel.db` already contains the active
+reference record at revision 1.
 
 ### Opportunity workspace
 
@@ -111,30 +102,12 @@ is explicitly labeled as demonstration evidence—not an official Florida Power
 | `POST /opportunities/{id}/edit` | Save profile changes |
 | `POST /opportunities/{id}/archive` | Recoverably archive a record |
 
-### Evidence workspace
-
-| Route | Purpose |
-|---|---|
-| `GET /opportunities/{id}/evidence/new` | Add Evidence form |
-| `GET /opportunities/{id}/evidence` | List evidence as JSON, or render the opportunity workspace for a browser |
-| `POST /opportunities/{id}/evidence` | Create metadata-only JSON evidence or multipart file evidence |
-| `GET /opportunities/{id}/evidence/{evidence_id}` | Evidence metadata and file-integrity detail |
-| `GET /opportunities/{id}/evidence/{evidence_id}/edit` | Metadata edit form |
-| `POST /opportunities/{id}/evidence/{evidence_id}/edit` | Save metadata with revision checking |
-| `PATCH /opportunities/{id}/evidence/{evidence_id}` | Revise evidence metadata through the API |
-| `POST /opportunities/{id}/evidence/{evidence_id}/archive` | Recoverably archive evidence; attached bytes are retained |
-| `GET /opportunities/{id}/evidence/{evidence_id}/file` | View or download the stored file |
-
 ## API surface
 
 | Method | Route | Purpose |
 |---|---|---|
 | `POST` / `GET` | `/v1/opportunities` | Create or list opportunities |
 | `GET` / `PUT` / `DELETE` | `/v1/opportunities/{id}` | Retrieve, replace, or archive an opportunity |
-| `POST` / `GET` | `/opportunities/{id}/evidence` | Create or list managed evidence |
-| `GET` / `PATCH` | `/opportunities/{id}/evidence/{evidence_id}` | Retrieve or revise managed evidence |
-| `POST` | `/opportunities/{id}/evidence/{evidence_id}/archive` | Recoverably archive managed evidence |
-| `GET` | `/opportunities/{id}/evidence/{evidence_id}/file` | View or download the attached file |
 | `POST` / `GET` | `/v1/evidence` | Create or list evidence |
 | `GET` / `PATCH` | `/v1/evidence/{id}` | Retrieve or reclassify evidence |
 | `POST` | `/v1/evidence/{id}/verify` | Promote A → S or S → V with a source and verification note |
@@ -175,20 +148,6 @@ The bundled `examples/load_and_assess.py` client loads a complete engine profile
 - `X-Actor` supplies the audit actor in this reference build.
 - Browser edits use the same Opportunity Service and SQLite repository as the
   `/v1` API; the workspace is not a parallel persistence path.
-- Managed evidence uses sequential human-readable IDs beginning at `EV-000001`
-  plus an internal SQLite row ID.
-- Evidence metadata is stored in SQLite. Uploaded bytes are stored outside the
-  database under `data/evidence-files` with UUID-generated storage names.
-- The original filename is retained only as metadata. Path separators, control
-  characters, and unsafe names are rejected.
-- Every uploaded file receives a SHA-256 digest. This supports later integrity
-  comparison; it is not a claim of independent verification or cryptographic
-  immutability.
-- The default file-size limit is 10 MiB. Customer-uploaded evidence and local
-  SQLite runtime files are excluded from Git and from the Sprint 2 overlay ZIP.
-- Evidence creation, file upload, metadata revision, and archive operations
-  write application audit events with opportunity, evidence, revision, time,
-  and a change summary. The SQLite audit log is not tamper-evident storage.
 
 ## AnchorOS integration
 

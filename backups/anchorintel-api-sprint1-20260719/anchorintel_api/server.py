@@ -8,13 +8,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from .app import AnchorIntelApplication
 from .repository import Repository
-from .reference import ensure_reference_records
+from .reference import ensure_reference_opportunity
 from .service import AnchorIntelService
 
 
 def handler_for(application: AnchorIntelApplication):
     class Handler(BaseHTTPRequestHandler):
-        server_version = "AnchorIntelAPI/0.2.0"
+        server_version = "AnchorIntelAPI/0.1.0"
 
         def _serve(self):
             length = int(self.headers.get("Content-Length", "0"))
@@ -68,24 +68,9 @@ def main(argv: list[str] | None = None) -> int:
     repository = Repository(args.database)
     service = AnchorIntelService(repository)
     if args.seed_reference:
-        references = ensure_reference_records(service)
-        opportunity_action = (
-            "created" if references["opportunity_created"] else "already present"
-        )
-        print(
-            f"Reference opportunity {references['opportunity']['opportunity_id']} "
-            f"{opportunity_action}"
-        )
-        if references["evidence"] is None:
-            print("Reference evidence skipped because OI-000001 is archived")
-        else:
-            evidence_action = (
-                "created" if references["evidence_created"] else "already present"
-            )
-            print(
-                f"Reference evidence {references['evidence']['evidence_id']} "
-                f"{evidence_action}"
-            )
+        reference, created = ensure_reference_opportunity(service)
+        action = "created" if created else "already present"
+        print(f"Reference opportunity {reference['opportunity_id']} {action}")
     application = AnchorIntelApplication(service)
     server = create_server(application, args.host, args.port)
     bound_port = server.server_address[1]

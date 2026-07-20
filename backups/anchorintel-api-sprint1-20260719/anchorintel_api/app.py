@@ -6,22 +6,13 @@ import json
 import re
 import uuid
 from dataclasses import dataclass, field
-from email import policy
-from email.parser import BytesParser
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from .errors import ApiError
 from .openapi import build_openapi
 from .service import AnchorIntelService
-from .web import (
-    error_page,
-    evidence_detail,
-    evidence_form,
-    opportunity_detail,
-    opportunity_edit,
-    opportunity_list,
-)
+from .web import error_page, opportunity_detail, opportunity_edit, opportunity_list
 
 
 @dataclass
@@ -46,12 +37,6 @@ class Response:
     @classmethod
     def redirect(cls, location: str, status: int = 303) -> "Response":
         return cls(status, b"", {"Location": location})
-
-    @classmethod
-    def binary(
-        cls, status: int, value: bytes, content_type: str, headers: dict[str, str]
-    ) -> "Response":
-        return cls(status, value, {"Content-Type": content_type, **headers})
 
 
 class AnchorIntelApplication:
@@ -88,52 +73,6 @@ class AnchorIntelApplication:
             raise ApiError(400, "invalid_form", "Form body must be UTF-8") from exc
         return {key: values[-1] for key, values in parse_qs(decoded, keep_blank_values=True).items()}
 
-    def _multipart_body(
-        self, headers: dict[str, str], body: bytes
-    ) -> tuple[dict[str, str], dict[str, Any] | None]:
-        content_type = headers.get("content-type", "")
-        if "multipart/form-data" not in content_type.lower():
-            raise ApiError(400, "invalid_multipart", "Expected multipart/form-data")
-        if len(body) > self.service.max_file_size + 1024 * 1024:
-            raise ApiError(413, "file_too_large", "Multipart request exceeds the upload limit")
-        message = BytesParser(policy=policy.default).parsebytes(
-            f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode()
-            + body
-        )
-        if not message.is_multipart():
-            raise ApiError(400, "invalid_multipart", "Multipart request could not be parsed")
-        fields: dict[str, str] = {}
-        upload: dict[str, Any] | None = None
-        for part in message.iter_parts():
-            if part.get_content_disposition() != "form-data":
-                continue
-            name = part.get_param("name", header="content-disposition")
-            if not name:
-                continue
-            filename = part.get_filename()
-            if filename is not None and name == "file":
-                if upload is not None:
-                    raise ApiError(400, "multiple_files", "Only one evidence file is allowed")
-                upload = {
-                    "filename": filename,
-                    "content_type": part.get_content_type(),
-                    "content": part.get_payload(decode=True) or b"",
-                }
-            elif filename is None:
-                value = part.get_payload(decode=True) or b""
-                fields[name] = value.decode(part.get_content_charset() or "utf-8")
-        return fields, upload
-
-    @staticmethod
-    def _evidence_json_request(
-        method: str, headers: dict[str, str]
-    ) -> bool:
-        if "application/json" in headers.get("content-type", "").lower():
-            return True
-        if method in {"PATCH", "DELETE"}:
-            return True
-        return "text/html" not in headers.get("accept", "").lower()
-
     def handle(
         self,
         method: str,
@@ -152,13 +91,7 @@ class AnchorIntelApplication:
                 method.upper(), path, query, normalized_headers, body, actor
             )
         except ApiError as exc:
-            evidence_json = "/evidence" in path and self._evidence_json_request(
-                method.upper(), normalized_headers
-            )
-            if (
-                path == "/opportunities"
-                or path.startswith("/opportunities/")
-            ) and not evidence_json:
+            if path == "/opportunities" or path.startswith("/opportunities/"):
                 response = Response.text(
                     exc.status, error_page(exc.status, exc.message), "text/html; charset=utf-8"
                 )
@@ -193,7 +126,7 @@ class AnchorIntelApplication:
         if method == "GET" and path == "/":
             return Response.redirect("/opportunities")
         if method == "GET" and path == "/health":
-            return Response.json(200, {"status": "ok", "service": "anchorintel-api", "version": "0.2.0"})
+            return Response.json(200, {"status": "ok", "service": "anchorintel-api", "version": "0.1.0"})
         if method == "GET" and path == "/v1/openapi.json":
             return Response.json(200, build_openapi())
 
@@ -231,153 +164,6 @@ class AnchorIntelApplication:
                 )
                 return Response.redirect(f"/opportunities/{result['opportunity_id']}")
 
-        match = re.fullmatch(r"/opportunities/([^/]+)/evidence/new", path)
-        if match and method == "GET":
-            return Response.text(
-                200,
-                evidence_form(self.service.get_opportunity(match.group(1))),
-                "text/html; charset=utf-8",
-            )
-
-        match = re.fullmatch(r"/opportunities/([^/]+)/evidence", path)
-        if match:
-            opportunity_id = match.group(1)
-            if method == "GET":
-                include_archived = (
-                    query.get("include_archived", ["false"])[0].lower() == "true"
-                )
-                records = self.service.list_managed_evidence(
-                    opportunity_id, include_archived
-                )
-                if self._evidence_json_request(method, headers):
-                    return Response.json(200, {"items": records})
-                opportunity = self.service.get_opportunity(opportunity_id)
-                return Response.text(
-                    200,
-                    opportunity_detail(opportunity, records),
-                    "text/html; charset=utf-8",
-                )
-            if method == "POST":
-                content_type = headers.get("content-type", "").lower()
-                if "application/json" in content_type:
-                    fields = self._json_body(body)
-                    upload = None
-                else:
-                    fields, upload = self._multipart_body(headers, body)
-                result = self.service.create_managed_evidence(
-                    opportunity_id,
-                    fields,
-                    "anchorintel-ui" if actor == "anonymous" else actor,
-                    upload,
-                )
-                location = (
-                    f"/opportunities/{opportunity_id}/evidence/{result['evidence_id']}"
-                )
-                if "application/json" in content_type or self._evidence_json_request(
-                    method, headers
-                ):
-                    return Response.json(201, result, {"Location": location})
-                return Response.redirect(location)
-
-        match = re.fullmatch(
-            r"/opportunities/([^/]+)/evidence/([^/]+)/edit", path
-        )
-        if match:
-            opportunity_id, evidence_id = match.groups()
-            if method == "GET":
-                return Response.text(
-                    200,
-                    evidence_form(
-                        self.service.get_opportunity(opportunity_id),
-                        self.service.get_managed_evidence(opportunity_id, evidence_id),
-                    ),
-                    "text/html; charset=utf-8",
-                )
-            if method == "POST":
-                form = self._form_body(body)
-                try:
-                    revision = int(form.pop("revision", ""))
-                except ValueError as exc:
-                    raise ApiError(400, "invalid_revision", "Revision must be an integer") from exc
-                result = self.service.update_managed_evidence(
-                    opportunity_id,
-                    evidence_id,
-                    form,
-                    "anchorintel-ui" if actor == "anonymous" else actor,
-                    revision,
-                )
-                return Response.redirect(
-                    f"/opportunities/{opportunity_id}/evidence/{result['evidence_id']}"
-                )
-
-        match = re.fullmatch(
-            r"/opportunities/([^/]+)/evidence/([^/]+)/archive", path
-        )
-        if match and method == "POST":
-            opportunity_id, evidence_id = match.groups()
-            content_type = headers.get("content-type", "").lower()
-            if "application/json" in content_type:
-                request = self._json_body(body)
-                raw_revision = request.get("revision")
-            else:
-                raw_revision = self._form_body(body).get("revision")
-            try:
-                revision = int(raw_revision) if raw_revision not in {None, ""} else self._expected_revision(headers)
-            except (TypeError, ValueError) as exc:
-                raise ApiError(400, "invalid_revision", "Revision must be an integer") from exc
-            result = self.service.archive_managed_evidence(
-                opportunity_id,
-                evidence_id,
-                "anchorintel-ui" if actor == "anonymous" else actor,
-                revision,
-            )
-            if "application/json" in content_type or self._evidence_json_request(method, headers):
-                return Response.json(200, result)
-            return Response.redirect(
-                f"/opportunities/{opportunity_id}?notice=Evidence+archived"
-            )
-
-        match = re.fullmatch(
-            r"/opportunities/([^/]+)/evidence/([^/]+)/file", path
-        )
-        if match and method == "GET":
-            opportunity_id, evidence_id = match.groups()
-            file_path, evidence = self.service.evidence_file(opportunity_id, evidence_id)
-            return Response.binary(
-                200,
-                file_path.read_bytes(),
-                str(evidence.get("file_type") or "application/octet-stream"),
-                {
-                    "Content-Disposition": f'inline; filename="{evidence["file_name"]}"',
-                    "X-Content-Type-Options": "nosniff",
-                    "ETag": f'"sha256:{evidence["sha256"]}"',
-                },
-            )
-
-        match = re.fullmatch(r"/opportunities/([^/]+)/evidence/([^/]+)", path)
-        if match:
-            opportunity_id, evidence_id = match.groups()
-            if method == "GET":
-                result = self.service.get_managed_evidence(opportunity_id, evidence_id)
-                if self._evidence_json_request(method, headers):
-                    return Response.json(200, result, {"ETag": f'"{result["revision"]}"'})
-                return Response.text(
-                    200,
-                    evidence_detail(
-                        self.service.get_opportunity(opportunity_id), result
-                    ),
-                    "text/html; charset=utf-8",
-                )
-            if method == "PATCH":
-                result = self.service.update_managed_evidence(
-                    opportunity_id,
-                    evidence_id,
-                    self._json_body(body),
-                    actor,
-                    self._expected_revision(headers),
-                )
-                return Response.json(200, result, {"ETag": f'"{result["revision"]}"'})
-
         match = re.fullmatch(r"/opportunities/([^/]+)/archive", path)
         if match and method == "POST":
             self.service.archive_opportunity(
@@ -390,15 +176,10 @@ class AnchorIntelApplication:
         match = re.fullmatch(r"/opportunities/([^/]+)", path)
         if match and method == "GET":
             include_archived = query.get("include_archived", ["false"])[0].lower() == "true"
-            opportunity = self.service.get_opportunity(match.group(1), include_archived)
             return Response.text(
                 200,
                 opportunity_detail(
-                    opportunity,
-                    self.service.list_managed_evidence(
-                        match.group(1), include_archived=True
-                    ),
-                    query.get("notice", [""])[0],
+                    self.service.get_opportunity(match.group(1), include_archived)
                 ),
                 "text/html; charset=utf-8",
             )

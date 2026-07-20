@@ -126,19 +126,6 @@ class Repository:
                 );
                 """
             )
-            evidence_columns = {
-                row["name"] for row in db.execute("PRAGMA table_info(evidence)").fetchall()
-            }
-            if "archived" not in evidence_columns:
-                db.execute(
-                    "ALTER TABLE evidence ADD COLUMN archived INTEGER NOT NULL DEFAULT 0"
-                )
-            if "archived_at" not in evidence_columns:
-                db.execute("ALTER TABLE evidence ADD COLUMN archived_at TEXT")
-            db.execute(
-                "CREATE INDEX IF NOT EXISTS evidence_active_opportunity_idx "
-                "ON evidence(opportunity_id, archived, created_at)"
-            )
 
     @staticmethod
     def _audit(
@@ -172,28 +159,10 @@ class Repository:
     @staticmethod
     def _evidence_row(row: sqlite3.Row) -> dict[str, Any]:
         record = json.loads(row["record_json"])
-        claim = str(record.get("claim", "")).strip()
-        record.setdefault("title", claim)
-        record.setdefault("description", claim)
-        record.setdefault("evidence_type", "Other")
-        record.setdefault("evidence_status", "Collected")
-        record.setdefault("evidence_confidence", "Unknown")
-        record.setdefault("source_date", "")
-        record.setdefault("date_collected", row["created_at"][:10])
-        record.setdefault("file_name", "")
-        record.setdefault("file_type", "")
-        record.setdefault("file_size", 0)
-        record.setdefault("storage_location", "")
-        record.setdefault("storage_name", "")
-        record.setdefault("sha256", "")
-        record.setdefault("notes", "")
         record.update(
             {
-                "internal_id": row["internal_id"],
                 "opportunity_id": row["opportunity_id"],
                 "state": row["classification"],
-                "archived": bool(row["archived"]),
-                "archived_at": row["archived_at"],
                 "revision": row["revision"],
                 "created_at": row["created_at"],
                 "updated_at": row["updated_at"],
@@ -290,14 +259,14 @@ class Repository:
     def create_evidence(self, record: dict[str, Any], actor: str) -> dict[str, Any]:
         opportunity_id = record["opportunity_id"]
         self.get_opportunity(opportunity_id)
+        evidence_id = record.get("evidence_id") or new_id("E")
+        clean = dict(record)
+        clean["evidence_id"] = evidence_id
+        clean.pop("opportunity_id", None)
+        classification = clean["state"]
         now = utcnow()
         try:
             with self.connect() as db:
-                evidence_id = record.get("evidence_id") or self._next_evidence_id(db)
-                clean = dict(record)
-                clean["evidence_id"] = evidence_id
-                clean.pop("opportunity_id", None)
-                classification = clean["state"]
                 db.execute(
                     "INSERT INTO evidence(evidence_id, opportunity_id, record_json, classification, "
                     "created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
@@ -309,70 +278,28 @@ class Repository:
                     "evidence.created",
                     "evidence",
                     evidence_id,
-                    {
-                        "event_type": "evidence.created",
-                        "evidence_id": evidence_id,
-                        "opportunity_id": opportunity_id,
-                        "revision": 1,
-                        "state": classification,
-                        "evidence_status": clean.get("evidence_status", "Collected"),
-                        "summary": "Evidence record created",
-                    },
+                    {"opportunity_id": opportunity_id, "state": classification},
                 )
         except sqlite3.IntegrityError as exc:
             raise ApiError(409, "evidence_exists", f"Evidence {evidence_id} already exists") from exc
         return self.get_evidence(evidence_id)
 
-    @staticmethod
-    def _next_evidence_id(db: sqlite3.Connection) -> str:
-        rows = db.execute(
-            "SELECT evidence_id FROM evidence WHERE evidence_id GLOB 'EV-[0-9]*'"
-        ).fetchall()
-        used = {
-            int(row["evidence_id"][3:])
-            for row in rows
-            if row["evidence_id"][3:].isdigit()
-        }
-        number = 1
-        while number in used:
-            number += 1
-        return f"EV-{number:06d}"
-
-    def get_evidence(
-        self,
-        evidence_id: str,
-        opportunity_id: str | None = None,
-        include_archived: bool = True,
-    ) -> dict[str, Any]:
+    def get_evidence(self, evidence_id: str) -> dict[str, Any]:
         with self.connect() as db:
-            row = db.execute(
-                "SELECT rowid AS internal_id, * FROM evidence WHERE evidence_id = ?",
-                (evidence_id,),
-            ).fetchone()
-        if (
-            row is None
-            or (opportunity_id is not None and row["opportunity_id"] != opportunity_id)
-            or (row["archived"] and not include_archived)
-        ):
+            row = db.execute("SELECT * FROM evidence WHERE evidence_id = ?", (evidence_id,)).fetchone()
+        if row is None:
             raise ApiError(404, "evidence_not_found", f"Evidence {evidence_id} was not found")
         return self._evidence_row(row)
 
-    def list_evidence(
-        self, opportunity_id: str | None = None, include_archived: bool = False
-    ) -> list[dict[str, Any]]:
-        query = "SELECT rowid AS internal_id, * FROM evidence"
-        clauses: list[str] = []
-        params: list[Any] = []
+    def list_evidence(self, opportunity_id: str | None = None) -> list[dict[str, Any]]:
+        query = "SELECT * FROM evidence"
+        params: tuple[Any, ...] = ()
         if opportunity_id:
-            clauses.append("opportunity_id = ?")
-            params.append(opportunity_id)
-        if not include_archived:
-            clauses.append("archived = 0")
-        if clauses:
-            query += " WHERE " + " AND ".join(clauses)
+            query += " WHERE opportunity_id = ?"
+            params = (opportunity_id,)
         query += " ORDER BY created_at ASC"
         with self.connect() as db:
-            rows = db.execute(query, tuple(params)).fetchall()
+            rows = db.execute(query, params).fetchall()
         return [self._evidence_row(row) for row in rows]
 
     def update_evidence(
@@ -384,8 +311,6 @@ class Repository:
         expected_revision: int | None = None,
     ) -> dict[str, Any]:
         current = self.get_evidence(evidence_id)
-        if current["archived"]:
-            raise ApiError(409, "evidence_archived", "Archived evidence cannot be updated")
         if expected_revision is not None and current["revision"] != expected_revision:
             raise ApiError(
                 409,
@@ -410,112 +335,9 @@ class Repository:
                 action,
                 "evidence",
                 evidence_id,
-                {
-                    "event_type": action,
-                    "evidence_id": evidence_id,
-                    "opportunity_id": current["opportunity_id"],
-                    "revision": current["revision"] + 1,
-                    "previous_revision": current["revision"],
-                    "from_state": current["state"],
-                    "to_state": classification,
-                    "changed_fields": sorted(
-                        key
-                        for key in set(clean) | set(current)
-                        if key not in {
-                            "internal_id",
-                            "opportunity_id",
-                            "archived",
-                            "archived_at",
-                            "revision",
-                            "created_at",
-                            "updated_at",
-                        }
-                        and clean.get(key) != current.get(key)
-                    ),
-                    "summary": "Evidence metadata updated",
-                },
+                {"from_state": current["state"], "to_state": classification},
             )
         return self.get_evidence(evidence_id)
-
-    def record_evidence_file_uploaded(
-        self, evidence_id: str, actor: str
-    ) -> None:
-        evidence = self.get_evidence(evidence_id)
-        with self.connect() as db:
-            self._audit(
-                db,
-                actor,
-                "evidence.file_uploaded",
-                "evidence",
-                evidence_id,
-                {
-                    "event_type": "evidence.file_uploaded",
-                    "evidence_id": evidence_id,
-                    "opportunity_id": evidence["opportunity_id"],
-                    "revision": evidence["revision"],
-                    "file_name": evidence.get("file_name", ""),
-                    "file_size": evidence.get("file_size", 0),
-                    "sha256": evidence.get("sha256", ""),
-                    "summary": "Evidence file stored and hashed",
-                },
-            )
-
-    def archive_evidence(
-        self,
-        opportunity_id: str,
-        evidence_id: str,
-        actor: str,
-        expected_revision: int | None = None,
-    ) -> dict[str, Any]:
-        current = self.get_evidence(evidence_id, opportunity_id=opportunity_id)
-        if expected_revision is not None and current["revision"] != expected_revision:
-            raise ApiError(
-                409,
-                "revision_conflict",
-                "Evidence revision does not match If-Match",
-                {"expected": expected_revision, "actual": current["revision"]},
-            )
-        if current["archived"]:
-            return current
-        clean = {
-            key: value
-            for key, value in current.items()
-            if key
-            not in {
-                "internal_id",
-                "opportunity_id",
-                "archived",
-                "archived_at",
-                "revision",
-                "created_at",
-                "updated_at",
-            }
-        }
-        clean["status_before_archive"] = clean.get("evidence_status", "Collected")
-        clean["evidence_status"] = "Archived"
-        now = utcnow()
-        with self.connect() as db:
-            db.execute(
-                "UPDATE evidence SET record_json = ?, archived = 1, archived_at = ?, "
-                "revision = revision + 1, updated_at = ? WHERE evidence_id = ?",
-                (json.dumps(clean), now, now, evidence_id),
-            )
-            self._audit(
-                db,
-                actor,
-                "evidence.archived",
-                "evidence",
-                evidence_id,
-                {
-                    "event_type": "evidence.archived",
-                    "evidence_id": evidence_id,
-                    "opportunity_id": opportunity_id,
-                    "revision": current["revision"] + 1,
-                    "previous_revision": current["revision"],
-                    "summary": "Evidence record archived; stored file retained",
-                },
-            )
-        return self.get_evidence(evidence_id, opportunity_id=opportunity_id)
 
     def create_assessment(
         self,
@@ -624,3 +446,4 @@ class Repository:
             }
             for row in rows
         ]
+

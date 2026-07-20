@@ -1,0 +1,12 @@
+# Local SQLite runtime state
+data/*.db
+data/*.db-wal
+data/*.db-shm
+
+# Customer-uploaded evidence is runtime data, never source control.
+data/evidence-files/*
+!data/evidence-files/.gitignore
+
+# Python runtime artifacts
+__pycache__/
+*.py[cod]
