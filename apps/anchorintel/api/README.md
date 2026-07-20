@@ -1,17 +1,17 @@
 # AnchorIntel API
 
-AnchorIntel API v0.5.0 is the AnchorOS-facing service for the persisted
-S.P.A.T.I.A.L. opportunity lifecycle. Sprint 5 adds the first Executive
-Opportunity Dossier: a deterministic, replayable `ED-*` artifact rendered as
-HTML, PDF, and JSON entirely from persisted AnchorIntel records.
+AnchorIntel API v0.6.0 is the AnchorOS-facing service for the complete persisted
+S.P.A.T.I.A.L. opportunity lifecycle. Sprint 6 adds controlled `AR-*` archives,
+deterministic ZIP packages, manifest and package hashes, replay verification,
+and read-only terminal closure.
 
-Sprint 1–4 behavior remains intact. Dossier generation does not browse the
-internet, invoke an external AI model, create or regenerate evidence, rerun a
-Knowledge Module, rerun S.P.A.T.I.A.L., or reinterpret its recommendation.
+The archive service consumes only persisted records and existing dossier
+exports. It does not browse the internet, invoke external AI, create evidence,
+rerun a Knowledge Module, rerun S.P.A.T.I.A.L., or reinterpret a decision.
 
 ## Quick start
 
-Expected AnchorOS layout:
+Expected layout:
 
 ```text
 AnchorOS/
@@ -27,20 +27,7 @@ From the AnchorOS repository root:
 ./apps/anchorintel/api/start-anchorintel.sh
 ```
 
-Open <http://127.0.0.1:8080/opportunities/OI-000001>. The launcher is safe for
-parent paths containing spaces and idempotently seeds the bounded reference
-chain when its prerequisites are current:
-
-- `OI-000001` — Florida Power & Light Asset Intelligence Opportunity;
-- `EV-000001` — Sirius Logic Systems reference analysis;
-- `KR-000001` on a fresh database, or the existing current review;
-- `AS-000001` on a fresh database, or the existing current assessment; and
-- `ED-000001` on a fresh database, or the existing dossier.
-
-Existing active, edited, archived, or superseded records are never overwritten.
-The sample assessment currently returns `Hold`, `33.2/100`, and `Low` engine
-evidence confidence. Those are bounded engine outputs, not claims about or an
-endorsement by Florida Power & Light.
+Open <http://127.0.0.1:8080/opportunities/OI-000001>.
 
 Manual start from `apps/anchorintel/api`:
 
@@ -49,98 +36,112 @@ PYTHONPATH="../spatial-opportunity-engine:." \
   python3 -m anchorintel_api --database data/anchorintel.db --seed-reference
 ```
 
-## Sprint 5 workflow
+Reference seeding remains idempotent and stops at the current dossier. It does
+not automatically archive an opportunity or overwrite edited, archived, stale,
+superseded, or existing records.
+
+## BOOT-0020 workflow
 
 ```text
-OI-000001 → EV-000001 → KR-000002 → AS-000001 → ED-000001
-Opportunity   Evidence    Review       Assessment    Dossier
+OI-000001 → EV-000001 → KR-000002 → AS-000001 → ED-000001 → AR-000001
+Opportunity   Evidence    Review       Assessment    Dossier       Archive
 ```
 
-IDs are not hard-coded into report logic. The example above is preserved when
-those records exist; a fresh reference database naturally uses its current
-`KR-000001`. Every dossier follows the assessment's persisted review link.
+The installed database determines the current review ID. A fresh reference
+database naturally begins with `KR-000001`; the verified BOOT-0020 provenance
+fixture intentionally supersedes it to `KR-000002`. IDs are never rewritten by
+archive logic.
 
-## Dossier API and workspace
+## Archive API and workspace
 
 | Method | Route | Purpose |
 |---|---|---|
-| `GET` | `/opportunities/{id}/dossiers/new` | Readiness and bounded-generation screen |
-| `POST` / `GET` | `/opportunities/{id}/dossiers` | Generate or list dossiers |
-| `GET` | `/opportunities/{id}/dossiers/{dossier_id}` | View canonical dossier and traceability |
-| `POST` | `/opportunities/{id}/dossiers/{dossier_id}/replay` | Re-render the stored snapshot and compare all artifacts |
-| `GET` | `/opportunities/{id}/dossiers/{dossier_id}/html` | Download standalone HTML |
-| `GET` | `/opportunities/{id}/dossiers/{dossier_id}/pdf` | Download deterministic letter-size PDF |
-| `GET` | `/opportunities/{id}/dossiers/{dossier_id}/json` | Download canonical JSON |
+| `GET` | `/opportunities/{id}/archives/new` | Readiness, warnings, and confirmation page |
+| `POST` | `/opportunities/{id}/archives` | Create the terminal archive package |
+| `GET` | `/opportunities/{id}/archives` | List persisted archives |
+| `GET` | `/opportunities/{id}/archives/{archive_id}` | View archive identity, hashes, manifest, and provenance |
+| `GET` | `/opportunities/{id}/archives/{archive_id}/download` | Download the persisted ZIP |
+| `POST` | `/opportunities/{id}/archives/{archive_id}/replay` | Verify package, member hashes, IDs, revisions, and provenance |
 
 The OpenAPI 3.1 contract is at `/v1/openapi.json`.
 
-## Persisted report boundary
+## Archive preconditions
 
-An `ED-*` record consumes exactly:
+Creation fails closed unless the opportunity is active and has:
 
-1. current opportunity fields, revision, and timestamps;
-2. sorted active evidence summaries and revisions;
-3. the persisted Knowledge Review identified by the assessment;
-4. the persisted S.P.A.T.I.A.L. assessment result and provenance; and
-5. dossier format version `1.0.0`.
+1. at least one active evidence record;
+2. a current completed Knowledge Review;
+3. a current S.P.A.T.I.A.L. assessment;
+4. a current Executive Opportunity Dossier;
+5. a consistent persisted provenance chain;
+6. a passing dossier replay; and
+7. all required dossier exports.
 
-The report includes executive, opportunity, evidence, Knowledge Review, and
-assessment summaries; exact gate results and recommendation; traceability; input,
-assessment, engine-input, and dossier replay hashes; versions; and explicit
-bounded-use statements. Evidence is summarized rather than duplicated.
+Duplicate current archives and stale upstream records are rejected. Successful
+archival preserves every source record, stores the package outside SQLite under
+`data/archives/`, and places the opportunity in read-only archived state without
+changing the source revision or source `updated_at` used by replay.
 
-The richer HTML export is print-friendly. The PDF is a dependency-free,
-deterministic, paginated text report. JSON is canonical business content. All
-three survive repository restart.
+## Package and replay boundary
 
-## Determinism, replay, and staleness
+Every archive contains exactly:
 
-The input hash covers the selected persisted snapshot. Report-state time is
-derived from persisted timestamps, not the generation clock. Repeating a
-generation request for the same opportunity and input hash idempotently returns
-the existing dossier. Replay rebuilds JSON, HTML, and PDF from the stored snapshot
-and compares each artifact plus the input and replay hashes.
+```text
+manifest.json
+opportunity.json
+evidence.json
+knowledge-review.json
+assessment.json
+dossier.json
+dossier.html
+dossier.pdf
+audit-summary.json
+replay-summary.json
+```
 
-SHA-256 is used for reproducibility and integrity comparison. It is not proof of
-source truth, independent verification, digital-signature identity,
-cryptographic immutability, or a tamper-evident database.
+ZIP member order, metadata, compression settings, JSON serialization, and file
+hashes are deterministic for identical archive inputs. Replay verifies the
+stored package SHA-256, exact manifest, safe member set, per-file hashes and
+sizes, record IDs and revisions, dossier and assessment replay hashes, Knowledge
+Module integrity hash, and complete provenance chain. Results are `PASS` or
+`FAIL` with reasons.
 
-A dossier becomes stale if its opportunity, active evidence, Knowledge Review,
-or assessment ceases to be current, or a successor dossier supersedes it. Stale
-artifacts remain viewable, downloadable, and replayable, but no longer complete
-the dossier lifecycle step.
+SHA-256 demonstrates reproducibility and integrity comparison inside this
+application. It is not a digital signature, source-truth determination,
+independent verification, immutable storage, or a tamper-evident database.
 
-## Storage and migration
+## Storage and additive migration
 
-Sprint 5 creates one additive SQLite table, `executive_dossiers`, containing the
-input snapshot, canonical document, HTML, PDF bytes, identifiers, hashes,
-versions, and timestamps. No existing table or row is removed or rewritten.
-Uploaded evidence remains outside SQLite. Runtime databases and customer files
-are excluded from the ZIP.
+Sprint 6 creates the `archives` table and indexes idempotently. Archive packages
+are external files; only metadata, manifest, hashes, counts, provenance, and the
+controlled location are stored in SQLite. No existing table, row, evidence file,
+review, assessment, or dossier is removed. Runtime databases, uploaded evidence,
+and generated archives are excluded from the installation ZIP and Git.
 
-Back up source, SQLite DB/WAL/SHM files, and the evidence store before
-installation. See `INSTALL-SPRINT5.md` for the exact file inventory, schema,
-staging procedure, and complete Sprint 4 restoration steps.
+See `INSTALL-SPRINT6.md` before installing. It provides exact file inventory,
+backup, migration, isolated verification, overlay, and complete Sprint 5 restore
+commands.
 
 ## Verification
+
+From `apps/anchorintel/api`:
 
 ```bash
 PYTHONPATH="../spatial-opportunity-engine:." \
   python3 -m unittest discover -s tests -v
 
-cd ../spatial-opportunity-engine
-python3 -m unittest discover -s tests -v
+PYTHONPATH="../spatial-opportunity-engine:." \
+  python3 -m unittest discover -s ../spatial-opportunity-engine/tests -v
 ```
 
-The source build is verified with 32 API tests and the unchanged eight engine
-tests. PDF exports are also checked with Poppler (`pdfinfo`, `pdftotext`, and
-`pdftoppm`). See `VERIFICATION.md` and `SPRINT5-VERIFICATION-CHECKLIST.md`.
+The source build has 40 passing AnchorIntel tests and eight unchanged engine
+tests. See `VERIFICATION.md` and `SPRINT6-VERIFICATION-CHECKLIST.md`.
 
 ## Production boundary
 
 This remains a loopback-bound reference service. It does not provide production
 authentication, authorization, TLS termination, tenant isolation, rate limits,
-database encryption, high availability, tamper-evident audit storage, or load
-qualification. Do not expose it directly to an untrusted network. Output is not
-legal, regulatory, engineering, environmental, financial, procurement, or
-investment advice and is not a claim of independent verification.
+database encryption, high availability, immutable audit storage, or load
+qualification. Do not expose it directly to an untrusted network. Its output is
+not legal, regulatory, engineering, environmental, financial, procurement, or
+investment advice.

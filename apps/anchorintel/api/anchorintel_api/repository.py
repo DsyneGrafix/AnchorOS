@@ -157,6 +157,43 @@ class Repository:
                 CREATE INDEX IF NOT EXISTS executive_dossiers_opportunity_idx
                     ON executive_dossiers(opportunity_id, created_at DESC);
 
+                CREATE TABLE IF NOT EXISTS archives (
+                    archive_id TEXT PRIMARY KEY,
+                    opportunity_id TEXT NOT NULL,
+                    opportunity_revision INTEGER NOT NULL,
+                    evidence_trace_json TEXT NOT NULL,
+                    knowledge_review_id TEXT NOT NULL,
+                    knowledge_review_revision INTEGER NOT NULL,
+                    assessment_id TEXT NOT NULL,
+                    assessment_revision INTEGER NOT NULL,
+                    dossier_id TEXT NOT NULL,
+                    dossier_format_version TEXT NOT NULL,
+                    archive_status TEXT NOT NULL,
+                    archive_reason TEXT NOT NULL,
+                    archived_by TEXT NOT NULL,
+                    archive_timestamp TEXT NOT NULL,
+                    package_manifest_json TEXT NOT NULL,
+                    package_hash TEXT NOT NULL,
+                    replay_hash TEXT NOT NULL,
+                    record_count INTEGER NOT NULL,
+                    file_count INTEGER NOT NULL,
+                    storage_location TEXT NOT NULL,
+                    provenance_json TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY(opportunity_id) REFERENCES opportunities(opportunity_id),
+                    FOREIGN KEY(knowledge_review_id) REFERENCES knowledge_reviews(review_id),
+                    FOREIGN KEY(assessment_id) REFERENCES assessments(assessment_id),
+                    FOREIGN KEY(dossier_id) REFERENCES executive_dossiers(dossier_id)
+                );
+
+                CREATE INDEX IF NOT EXISTS archives_opportunity_idx
+                    ON archives(opportunity_id, created_at DESC);
+
+                CREATE UNIQUE INDEX IF NOT EXISTS archives_current_opportunity_idx
+                    ON archives(opportunity_id)
+                    WHERE archive_status IN ('Prepared', 'Archived');
+
                 CREATE TABLE IF NOT EXISTS lifecycle_events (
                     event_id TEXT PRIMARY KEY,
                     opportunity_id TEXT NOT NULL,
@@ -357,6 +394,34 @@ class Repository:
             result["input_snapshot"] = json.loads(row["input_snapshot_json"])
         return result
 
+    @staticmethod
+    def _archive_row(row: sqlite3.Row) -> dict[str, Any]:
+        return {
+            "archive_id": row["archive_id"],
+            "opportunity_id": row["opportunity_id"],
+            "opportunity_revision": row["opportunity_revision"],
+            "evidence_trace": json.loads(row["evidence_trace_json"]),
+            "knowledge_review_id": row["knowledge_review_id"],
+            "knowledge_review_revision": row["knowledge_review_revision"],
+            "assessment_id": row["assessment_id"],
+            "assessment_revision": row["assessment_revision"],
+            "dossier_id": row["dossier_id"],
+            "dossier_format_version": row["dossier_format_version"],
+            "archive_status": row["archive_status"],
+            "archive_reason": row["archive_reason"],
+            "archived_by": row["archived_by"],
+            "archive_timestamp": row["archive_timestamp"],
+            "package_manifest": json.loads(row["package_manifest_json"]),
+            "package_hash": row["package_hash"],
+            "replay_hash": row["replay_hash"],
+            "record_count": row["record_count"],
+            "file_count": row["file_count"],
+            "storage_location": row["storage_location"],
+            "provenance": json.loads(row["provenance_json"]),
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
     def create_opportunity(self, record: dict[str, Any], actor: str) -> dict[str, Any]:
         opportunity_id = record.get("opportunity_id") or new_id("OPP")
         record = dict(record)
@@ -445,7 +510,9 @@ class Repository:
 
     def create_evidence(self, record: dict[str, Any], actor: str) -> dict[str, Any]:
         opportunity_id = record["opportunity_id"]
-        self.get_opportunity(opportunity_id)
+        opportunity = self.get_opportunity(opportunity_id, include_archived=True)
+        if opportunity["archived"]:
+            raise ApiError(409, "opportunity_archived", "Archived opportunities are read only")
         now = utcnow()
         try:
             with self.connect() as db:
@@ -540,6 +607,11 @@ class Repository:
         expected_revision: int | None = None,
     ) -> dict[str, Any]:
         current = self.get_evidence(evidence_id)
+        opportunity = self.get_opportunity(
+            current["opportunity_id"], include_archived=True
+        )
+        if opportunity["archived"]:
+            raise ApiError(409, "opportunity_archived", "Archived opportunities are read only")
         if current["archived"]:
             raise ApiError(409, "evidence_archived", "Archived evidence cannot be updated")
         if expected_revision is not None and current["revision"] != expected_revision:
@@ -623,6 +695,9 @@ class Repository:
         actor: str,
         expected_revision: int | None = None,
     ) -> dict[str, Any]:
+        opportunity = self.get_opportunity(opportunity_id, include_archived=True)
+        if opportunity["archived"]:
+            raise ApiError(409, "opportunity_archived", "Archived opportunities are read only")
         current = self.get_evidence(evidence_id, opportunity_id=opportunity_id)
         if expected_revision is not None and current["revision"] != expected_revision:
             raise ApiError(
@@ -1362,6 +1437,161 @@ class Repository:
                     "match": replay["match"],
                     "artifact_matches": replay["artifact_matches"],
                 },
+            )
+
+    @staticmethod
+    def _next_archive_id(db: sqlite3.Connection) -> str:
+        rows = db.execute(
+            "SELECT archive_id FROM archives WHERE archive_id GLOB 'AR-[0-9]*'"
+        ).fetchall()
+        used = {
+            int(row["archive_id"][3:])
+            for row in rows
+            if row["archive_id"][3:].isdigit()
+        }
+        number = 1
+        while number in used:
+            number += 1
+        return f"AR-{number:06d}"
+
+    def next_archive_id(self) -> str:
+        with self.connect() as db:
+            return self._next_archive_id(db)
+
+    def create_archive(
+        self,
+        record: dict[str, Any],
+        actor: str,
+    ) -> dict[str, Any]:
+        """Persist an archive and close the opportunity in one transaction."""
+
+        now = utcnow()
+        opportunity = self.get_opportunity(
+            str(record["opportunity_id"]), include_archived=True
+        )
+        if opportunity["archived"]:
+            raise ApiError(
+                409,
+                "opportunity_archived",
+                "An archived opportunity cannot receive another current archive",
+            )
+        try:
+            with self.connect() as db:
+                db.execute(
+                    "INSERT INTO archives("
+                    "archive_id, opportunity_id, opportunity_revision, evidence_trace_json, "
+                    "knowledge_review_id, knowledge_review_revision, assessment_id, "
+                    "assessment_revision, dossier_id, dossier_format_version, archive_status, "
+                    "archive_reason, archived_by, archive_timestamp, package_manifest_json, "
+                    "package_hash, replay_hash, record_count, file_count, storage_location, "
+                    "provenance_json, created_at, updated_at"
+                    ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        record["archive_id"],
+                        record["opportunity_id"],
+                        record["opportunity_revision"],
+                        json.dumps(record["evidence_trace"]),
+                        record["knowledge_review_id"],
+                        record["knowledge_review_revision"],
+                        record["assessment_id"],
+                        record["assessment_revision"],
+                        record["dossier_id"],
+                        record["dossier_format_version"],
+                        record["archive_status"],
+                        record["archive_reason"],
+                        record["archived_by"],
+                        record["archive_timestamp"],
+                        json.dumps(record["package_manifest"]),
+                        record["package_hash"],
+                        record["replay_hash"],
+                        record["record_count"],
+                        record["file_count"],
+                        record["storage_location"],
+                        json.dumps(record["provenance"]),
+                        now,
+                        now,
+                    ),
+                )
+                # Archival is a terminal container-state transition, not an edit to
+                # the source opportunity snapshot. Preserve revision and updated_at
+                # so dossier and assessment replay inputs remain byte-for-byte current.
+                db.execute(
+                    "UPDATE opportunities SET archived = 1, lifecycle_state = 'Archived' "
+                    "WHERE opportunity_id = ?",
+                    (record["opportunity_id"],),
+                )
+                self._audit(
+                    db,
+                    actor,
+                    "archive.completed",
+                    "archive",
+                    record["archive_id"],
+                    {
+                        "event_type": "archive.completed",
+                        "archive_id": record["archive_id"],
+                        "opportunity_id": record["opportunity_id"],
+                        "dossier_id": record["dossier_id"],
+                        "assessment_id": record["assessment_id"],
+                        "knowledge_review_id": record["knowledge_review_id"],
+                        "evidence_trace": record["evidence_trace"],
+                        "package_hash": record["package_hash"],
+                        "replay_result": "PASS",
+                        "result_summary": "Deterministic archive package persisted and lifecycle closed",
+                    },
+                )
+        except sqlite3.IntegrityError as exc:
+            raise ApiError(
+                409,
+                "archive_conflict",
+                "A current archive already exists or the archive identity conflicts",
+            ) from exc
+        return self.get_archive(str(record["archive_id"]))
+
+    def get_archive(self, archive_id: str) -> dict[str, Any]:
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT * FROM archives WHERE archive_id = ?", (archive_id,)
+            ).fetchone()
+        if row is None:
+            raise ApiError(404, "archive_not_found", f"Archive {archive_id} was not found")
+        return self._archive_row(row)
+
+    def list_archives(self, opportunity_id: str) -> list[dict[str, Any]]:
+        self.get_opportunity(opportunity_id, include_archived=True)
+        with self.connect() as db:
+            rows = db.execute(
+                "SELECT * FROM archives WHERE opportunity_id = ? "
+                "ORDER BY created_at DESC, archive_id DESC",
+                (opportunity_id,),
+            ).fetchall()
+        return [self._archive_row(row) for row in rows]
+
+    def current_archive(self, opportunity_id: str) -> dict[str, Any] | None:
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT * FROM archives WHERE opportunity_id = ? "
+                "AND archive_status IN ('Prepared', 'Archived') "
+                "ORDER BY created_at DESC, archive_id DESC LIMIT 1",
+                (opportunity_id,),
+            ).fetchone()
+        return self._archive_row(row) if row else None
+
+    def record_archive_event(
+        self,
+        *,
+        actor: str,
+        action: str,
+        archive_id: str,
+        details: dict[str, Any],
+    ) -> None:
+        with self.connect() as db:
+            self._audit(
+                db,
+                actor,
+                action,
+                "archive",
+                archive_id,
+                {"event_type": action, "archive_id": archive_id, **details},
             )
 
     def latest_assessment(self, opportunity_id: str) -> dict[str, Any] | None:

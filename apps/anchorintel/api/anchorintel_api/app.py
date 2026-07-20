@@ -15,6 +15,8 @@ from .errors import ApiError
 from .openapi import build_openapi
 from .service import AnchorIntelService
 from .web import (
+    archive_detail,
+    archive_form,
     dossier_detail,
     dossier_form,
     error_page,
@@ -200,7 +202,7 @@ class AnchorIntelApplication:
         if method == "GET" and path == "/":
             return Response.redirect("/opportunities")
         if method == "GET" and path == "/health":
-            return Response.json(200, {"status": "ok", "service": "anchorintel-api", "version": "0.5.0"})
+            return Response.json(200, {"status": "ok", "service": "anchorintel-api", "version": "0.6.0"})
         if method == "GET" and path == "/v1/openapi.json":
             return Response.json(200, build_openapi())
 
@@ -388,7 +390,7 @@ class AnchorIntelApplication:
                 return Response.text(
                     200,
                     evidence_detail(
-                        self.service.get_opportunity(opportunity_id), result
+                        self.service.get_opportunity(opportunity_id, include_archived=True), result
                     ),
                     "text/html; charset=utf-8",
                 )
@@ -517,7 +519,7 @@ class AnchorIntelApplication:
             return Response.text(
                 200,
                 knowledge_review_detail(
-                    self.service.get_opportunity(opportunity_id), result
+                    self.service.get_opportunity(opportunity_id, include_archived=True), result
                 ),
                 "text/html; charset=utf-8",
             )
@@ -528,7 +530,7 @@ class AnchorIntelApplication:
             return Response.text(
                 200,
                 spatial_assessment_form(
-                    self.service.get_opportunity(opportunity_id),
+                    self.service.get_opportunity(opportunity_id, include_archived=True),
                     self.service.assessment_readiness(opportunity_id),
                 ),
                 "text/html; charset=utf-8",
@@ -614,7 +616,7 @@ class AnchorIntelApplication:
             return Response.text(
                 200,
                 spatial_assessment_detail(
-                    self.service.get_opportunity(opportunity_id),
+                    self.service.get_opportunity(opportunity_id, include_archived=True),
                     result,
                     query.get("notice", [""])[0],
                 ),
@@ -724,7 +726,125 @@ class AnchorIntelApplication:
             return Response.text(
                 200,
                 dossier_detail(
+                    self.service.get_opportunity(opportunity_id, include_archived=True),
+                    result,
+                    query.get("notice", [""])[0],
+                ),
+                "text/html; charset=utf-8",
+            )
+
+        match = re.fullmatch(r"/opportunities/([^/]+)/archives/new", path)
+        if match and method == "GET":
+            opportunity_id = match.group(1)
+            return Response.text(
+                200,
+                archive_form(
                     self.service.get_opportunity(opportunity_id),
+                    self.service.archive_readiness(opportunity_id),
+                ),
+                "text/html; charset=utf-8",
+            )
+
+        match = re.fullmatch(r"/opportunities/([^/]+)/archives", path)
+        if match:
+            opportunity_id = match.group(1)
+            if method == "GET":
+                records = self.service.list_archives(opportunity_id)
+                if self._business_json_request(method, headers):
+                    return Response.json(200, {"items": records})
+                return Response.text(
+                    200,
+                    opportunity_detail(
+                        self.service.get_opportunity(
+                            opportunity_id, include_archived=True
+                        ),
+                        self.service.list_managed_evidence(
+                            opportunity_id, include_archived=True
+                        ),
+                        knowledge_reviews=self.service.list_knowledge_reviews(
+                            opportunity_id
+                        ),
+                        knowledge_modules=self.service.list_knowledge_modules(),
+                        assessments=self.service.list_operational_assessments(
+                            opportunity_id
+                        ),
+                        dossiers=self.service.list_dossiers(opportunity_id),
+                        archives=records,
+                    ),
+                    "text/html; charset=utf-8",
+                )
+            if method == "POST":
+                content_type = headers.get("content-type", "").lower()
+                request = (
+                    self._json_body(body)
+                    if "application/json" in content_type
+                    else self._form_body(body)
+                )
+                result = self.service.create_archive(
+                    opportunity_id,
+                    "anchorintel-ui" if actor == "anonymous" else actor,
+                    str(
+                        request.get(
+                            "reason", "BOOT-0020 lifecycle completion"
+                        )
+                    ),
+                )
+                location = (
+                    f"/opportunities/{opportunity_id}/archives/"
+                    f"{result['archive_id']}"
+                )
+                if "application/json" in content_type or self._business_json_request(
+                    method, headers
+                ):
+                    return Response.json(201, result, {"Location": location})
+                return Response.redirect(location)
+
+        match = re.fullmatch(
+            r"/opportunities/([^/]+)/archives/([^/]+)/download", path
+        )
+        if match and method == "GET":
+            opportunity_id, archive_id = match.groups()
+            payload, content_type, filename = self.service.archive_artifact(
+                opportunity_id,
+                archive_id,
+                "anchorintel-ui" if actor == "anonymous" else actor,
+            )
+            return Response.binary(
+                200,
+                payload,
+                content_type,
+                {"Content-Disposition": f'attachment; filename="{filename}"'},
+            )
+
+        match = re.fullmatch(
+            r"/opportunities/([^/]+)/archives/([^/]+)/replay", path
+        )
+        if match and method == "POST":
+            opportunity_id, archive_id = match.groups()
+            replay = self.service.replay_archive(
+                opportunity_id,
+                archive_id,
+                "anchorintel-ui" if actor == "anonymous" else actor,
+            )
+            if self._business_json_request(method, headers):
+                return Response.json(200, replay)
+            return Response.redirect(
+                f"/opportunities/{opportunity_id}/archives/{archive_id}"
+                f"?notice=Archive+replay+{replay['result']}"
+            )
+
+        match = re.fullmatch(r"/opportunities/([^/]+)/archives/([^/]+)", path)
+        if match and method == "GET":
+            opportunity_id, archive_id = match.groups()
+            result = self.service.get_archive(opportunity_id, archive_id)
+            if self._business_json_request(method, headers):
+                return Response.json(200, result)
+            return Response.text(
+                200,
+                archive_detail(
+                    self.service.get_opportunity(
+                        opportunity_id, include_archived=True
+                    ),
                     result,
                     query.get("notice", [""])[0],
                 ),
@@ -743,7 +863,9 @@ class AnchorIntelApplication:
         match = re.fullmatch(r"/opportunities/([^/]+)", path)
         if match and method == "GET":
             include_archived = query.get("include_archived", ["false"])[0].lower() == "true"
-            opportunity = self.service.get_opportunity(match.group(1), include_archived)
+            opportunity = self.service.get_opportunity(
+                match.group(1), include_archived=True
+            )
             return Response.text(
                 200,
                 opportunity_detail(
@@ -756,6 +878,7 @@ class AnchorIntelApplication:
                     self.service.list_knowledge_modules(),
                     self.service.list_operational_assessments(match.group(1)),
                     self.service.list_dossiers(match.group(1)),
+                    self.service.list_archives(match.group(1)),
                 ),
                 "text/html; charset=utf-8",
             )

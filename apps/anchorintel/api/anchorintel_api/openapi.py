@@ -44,6 +44,12 @@ def build_openapi() -> dict:
         "required": True,
         "schema": {"type": "string", "pattern": "^ED-[0-9]{6}$"},
     }
+    archive_parameter = {
+        "name": "archive_id",
+        "in": "path",
+        "required": True,
+        "schema": {"type": "string", "pattern": "^AR-[0-9]{6}$"},
+    }
     evidence_json_body = {
         "required": True,
         "content": {
@@ -82,13 +88,13 @@ def build_openapi() -> dict:
         "openapi": "3.1.0",
         "info": {
             "title": "AnchorIntel API",
-            "version": "0.5.0",
+            "version": "0.6.0",
             "description": (
                 "AnchorOS service interface for opportunity, evidence, deterministic "
                 "Knowledge Review, S.P.A.T.I.A.L. assessment, and Executive Opportunity "
-                "Dossier lifecycle management. Sprint 5 adds ED identifiers, persisted "
-                "report snapshots, deterministic HTML/PDF/JSON exports, replay hashes, "
-                "and dynamic dossier lifecycle eligibility."
+                "Dossier and controlled archive lifecycle management. Sprint 6 adds AR "
+                "identifiers, deterministic ZIP packages, manifest and package hashes, "
+                "archive replay, read-only closure, and dynamic terminal lifecycle state."
             ),
         },
         "servers": [{"url": "http://127.0.0.1:8080"}],
@@ -98,6 +104,7 @@ def build_openapi() -> dict:
             {"name": "Knowledge"},
             {"name": "Assessments"},
             {"name": "Reports"},
+            {"name": "Archives"},
             {"name": "Lifecycle"},
             {"name": "Administration"},
         ],
@@ -427,6 +434,77 @@ def build_openapi() -> dict:
                             },
                         },
                         "404": {"description": "Dossier or export format not found"},
+                    },
+                },
+            },
+            "/opportunities/{opportunity_id}/archives": {
+                "parameters": [opportunity_parameter],
+                "get": {
+                    "tags": ["Archives"],
+                    "summary": "List controlled archives for an opportunity",
+                    "responses": {
+                        "200": {"description": "Archive collection"},
+                        "404": {"description": "Opportunity not found"},
+                    },
+                },
+                "post": {
+                    "tags": ["Archives"],
+                    "summary": "Create a deterministic terminal lifecycle archive",
+                    "requestBody": {
+                        "required": False,
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {"reason": {"type": "string"}},
+                                }
+                            }
+                        },
+                    },
+                    "responses": {
+                        "201": {"description": "Archive package created and persisted"},
+                        "404": {"description": "Opportunity or source record not found"},
+                        "409": {"description": "Lifecycle incomplete, stale, or already archived"},
+                    },
+                },
+            },
+            "/opportunities/{opportunity_id}/archives/{archive_id}": {
+                "parameters": [opportunity_parameter, archive_parameter],
+                "get": {
+                    "tags": ["Archives"],
+                    "summary": "Retrieve archive metadata, manifest, and provenance",
+                    "responses": {
+                        "200": {"description": "Archive record"},
+                        "404": {"description": "Archive not found for opportunity"},
+                    },
+                },
+            },
+            "/opportunities/{opportunity_id}/archives/{archive_id}/download": {
+                "parameters": [opportunity_parameter, archive_parameter],
+                "get": {
+                    "tags": ["Archives"],
+                    "summary": "Download the exact persisted archive ZIP",
+                    "responses": {
+                        "200": {
+                            "description": "Archive package",
+                            "content": {
+                                "application/zip": {
+                                    "schema": {"type": "string", "format": "binary"}
+                                }
+                            },
+                        },
+                        "404": {"description": "Archive record or package not found"},
+                    },
+                },
+            },
+            "/opportunities/{opportunity_id}/archives/{archive_id}/replay": {
+                "parameters": [opportunity_parameter, archive_parameter],
+                "post": {
+                    "tags": ["Archives"],
+                    "summary": "Verify package, manifest, hashes, revisions, and provenance",
+                    "responses": {
+                        "200": {"description": "PASS or FAIL replay result"},
+                        "404": {"description": "Archive not found for opportunity"},
                     },
                 },
             },

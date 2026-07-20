@@ -125,6 +125,7 @@ def opportunity_detail(
     knowledge_modules: Iterable[dict[str, Any]] = (),
     assessments: Iterable[dict[str, Any]] = (),
     dossiers: Iterable[dict[str, Any]] = (),
+    archives: Iterable[dict[str, Any]] = (),
 ) -> str:
     archived = bool(record.get("archived"))
     evidence_items = list(evidence_records)
@@ -134,13 +135,7 @@ def opportunity_detail(
         f'<li class="{escape(str(step.get("state", "pending")))}"><span class="mark">{"✓" if step.get("state") == "complete" else ""}</span><span>{_text(step.get("label"))}</span></li>'
         for step in workflow
     ) or '<li class="pending"><span class="mark"></span><span>Workflow not initialized</span></li>'
-    archive_action = (
-        '<span class="badge archived">Archived</span>'
-        if archived
-        else f"""<form method="post" action="/opportunities/{quote(str(record['opportunity_id']))}/archive">
-          <button class="danger" type="submit">Archive opportunity</button>
-        </form>"""
-    )
+    archive_action = '<span class="badge archived">Archived · read only</span>' if archived else ""
     edit_action = "" if archived else f'<a class="button" href="/opportunities/{quote(str(record["opportunity_id"]))}/edit">Edit opportunity</a>'
     notice_html = f'<div class="notice">{escape(notice)}</div>' if notice else ""
     evidence_rows = "".join(
@@ -198,13 +193,29 @@ def opportunity_detail(
     generate_dossier = ""
     if not archived and record.get("current_assessment"):
         generate_dossier = f'<a class="button" href="/opportunities/{quote(str(record["opportunity_id"]))}/dossiers/new">Generate Executive Dossier</a>'
+    archive_items = list(archives)
+    archive_rows = "".join(
+        f"""<tr><td><a class="record-title" href="/opportunities/{quote(str(record['opportunity_id']))}/archives/{quote(str(item['archive_id']))}">{_text(item.get('archive_id'))}</a></td>
+        <td><span class="badge">{_text(item.get('archive_status'))}</span></td><td>{_text(item.get('dossier_id'))}</td>
+        <td>{_text(item.get('record_count'))}</td><td>{_text(item.get('file_count'))}</td><td class="hash">{_text(item.get('package_hash'))}</td>
+        <td class="meta">{_text(item.get('archive_timestamp'))}</td><td><a href="/opportunities/{quote(str(record['opportunity_id']))}/archives/{quote(str(item['archive_id']))}">View</a></td></tr>"""
+        for item in archive_items
+    ) or '<tr><td class="empty" colspan="8">No controlled archive has been created.</td></tr>'
+    archive_results = ""
+    if not archived and record.get("current_dossier"):
+        archive_results = f'<a class="button" href="/opportunities/{quote(str(record["opportunity_id"]))}/archives/new">Archive Results</a>'
+    archived_banner = (
+        '<div class="notice"><strong>Read-only archived record.</strong> Normal editing and upstream lifecycle actions are disabled. The persisted provenance chain and exports remain available.</div>'
+        if archived
+        else ""
+    )
     return _layout(
         str(record.get("title", "Opportunity")),
         f"""<div class="eyebrow">{_text(record.get('opportunity_id'))} · {'Reference opportunity' if record.get('reference_record') else 'Opportunity record'}</div>
         <h1>{_text(record.get('title'))}</h1>
         <p class="lede">{_text(record.get('organization'))} · {_text(record.get('sector'))}</p>
         <div class="toolbar"><a class="button secondary" href="/opportunities{'?include_archived=true' if archived else ''}">← Opportunity list</a>{edit_action}{archive_action}</div>
-        {notice_html}
+        {notice_html}{archived_banner}
         <div class="grid">
           <section class="card"><h2>Opportunity profile</h2><p class="description">{_text(record.get('description'))}</p>
             <dl class="facts">
@@ -237,6 +248,10 @@ def opportunity_detail(
         <section class="card table-wrap" style="margin-top:22px">
           <div class="section-head"><div><h2>Executive Opportunity Dossiers</h2><div class="meta">{len(dossier_items)} persisted dossier{'s' if len(dossier_items) != 1 else ''}; stale artifacts remain replayable but do not complete the lifecycle.</div></div>{generate_dossier}</div>
           <table><thead><tr><th>ID</th><th>Recommendation</th><th>Assessment</th><th>Review</th><th>Format</th><th>Generated</th><th></th></tr></thead><tbody>{dossier_rows}</tbody></table>
+        </section>
+        <section class="card table-wrap" style="margin-top:22px">
+          <div class="section-head"><div><h2>Controlled Archives</h2><div class="meta">{len(archive_items)} persisted archive{'s' if len(archive_items) != 1 else ''}; packages preserve the completed provenance chain.</div></div>{archive_results}</div>
+          <table><thead><tr><th>ID</th><th>Status</th><th>Dossier</th><th>Records</th><th>Files</th><th>Package SHA-256</th><th>Archived</th><th></th></tr></thead><tbody>{archive_rows}</tbody></table>
         </section>""",
     )
 
@@ -357,7 +372,7 @@ def evidence_detail(opportunity: dict[str, Any], evidence: dict[str, Any]) -> st
     )
     actions = (
         '<span class="badge archived">Archived evidence</span>'
-        if archived
+        if archived or opportunity.get("archived")
         else f"""<a class="button" href="/opportunities/{quote(opportunity_id)}/evidence/{quote(evidence_id)}/edit">Edit metadata</a>
         <form method="post" action="/opportunities/{quote(opportunity_id)}/evidence/{quote(evidence_id)}/archive"><input type="hidden" name="revision" value="{_text(evidence.get('revision'), '1')}"><button class="danger" type="submit">Archive evidence</button></form>"""
     )
@@ -460,9 +475,9 @@ def knowledge_review_detail(
     stale = bool(review.get("stale"))
     stale_html = _review_section("Staleness", review.get("stale_reasons", []), "Current") if stale else '<div class="notice"><strong>Current review.</strong> The persisted opportunity revision, active evidence trace, module version, and module hash still match.</div>'
     actions = ""
-    if review.get("review_status") in {"Draft", "Ready", "Incomplete"} and not stale:
+    if review.get("review_status") in {"Draft", "Ready", "Incomplete"} and not stale and not opportunity.get("archived"):
         actions += f'<form method="post" action="/opportunities/{quote(opportunity_id)}/knowledge-reviews/{quote(review_id)}/complete"><input type="hidden" name="revision" value="{_text(review.get("revision"), "1")}"><button type="submit">Complete review</button></form>'
-    if review.get("review_status") != "Superseded":
+    if review.get("review_status") != "Superseded" and not opportunity.get("archived"):
         actions += f'<form method="post" action="/opportunities/{quote(opportunity_id)}/knowledge-reviews/{quote(review_id)}/supersede"><button type="submit">Run again and supersede</button></form>'
     return _layout(
         review_id,
@@ -665,6 +680,90 @@ def dossier_detail(
         <h2 style="margin-top:24px">Traceability</h2><p class="hash">{_text(document.get('traceability', {}).get('display'))}</p>
         <h2 style="margin-top:24px">Replay information</h2><dl class="facts"><div><dt>Dossier replay hash</dt><dd class="hash">{_text(replay.get('replay_hash'))}</dd></div><div><dt>Input hash</dt><dd class="hash">{_text(replay.get('input_hash'))}</dd></div><div><dt>Assessment replay hash</dt><dd class="hash">{_text(replay.get('assessment_replay_hash'))}</dd></div><div><dt>Engine input hash</dt><dd class="hash">{_text(replay.get('engine_input_hash'))}</dd></div></dl>
         <div class="notice" style="margin-top:24px">{_text(' '.join(document.get('footer', [])))}</div></section>""",
+    )
+
+
+def archive_form(
+    opportunity: dict[str, Any], readiness: dict[str, Any]
+) -> str:
+    opportunity_id = str(opportunity["opportunity_id"])
+    evidence = readiness.get("evidence", [])
+    review = readiness.get("knowledge_review") or {}
+    assessment = readiness.get("assessment") or {}
+    dossier = readiness.get("dossier") or {}
+    errors = readiness.get("errors", [])
+    warnings = readiness.get("warnings", [])
+    state = "Ready" if readiness.get("ready") else "Not ready"
+    submit = (
+        '<button class="danger" type="submit">Create archive and close lifecycle</button>'
+        if readiness.get("ready")
+        else '<button type="button" disabled>Archival unavailable</button>'
+    )
+    return _layout(
+        f"Archive results for {opportunity_id}",
+        f"""<div class="eyebrow">Lifecycle Service · Controlled Archive</div><h1>Archive Results</h1>
+        <p class="lede">Create the terminal BOOT-0020 record package and place this opportunity into read-only archived state.</p>
+        <div class="notice"><strong>Bounded archival.</strong> {_text(readiness.get('bounded_execution_notice'))}</div>
+        <div class="grid"><section class="card"><h2>Package inputs</h2><dl class="facts">
+        <div><dt>Opportunity</dt><dd>{_text(opportunity_id)} · rev {_text(opportunity.get('revision'))}</dd></div>
+        <div><dt>Evidence</dt><dd>{_text(', '.join(item.get('evidence_id','') for item in evidence))}</dd></div>
+        <div><dt>Knowledge Review</dt><dd>{_text(review.get('review_id'))} · rev {_text(review.get('revision'))}</dd></div>
+        <div><dt>Assessment</dt><dd>{_text(assessment.get('assessment_id'))} · rev {_text(assessment.get('revision'))}</dd></div>
+        <div><dt>Dossier</dt><dd>{_text(dossier.get('dossier_id'))} · v{_text(dossier.get('format_version'))}</dd></div>
+        <div><dt>Archive format</dt><dd>v{_text(readiness.get('archive_format_version'))}</dd></div></dl></section>
+        <aside class="card"><h2>Archive readiness</h2><p><span class="badge{' archived' if errors else ''}">{state}</span></p>
+        {_review_section('Blocking conditions', errors, 'None')}{_review_section('Warnings', warnings, 'None')}</aside></div>
+        <section class="card" style="margin-top:22px"><h2>Confirmation</h2><p>Successful archival preserves all upstream records, creates a deterministic ZIP package, completes the lifecycle, and disables normal editing. It does not delete source evidence or analysis.</p>
+        <form method="post" action="/opportunities/{quote(opportunity_id)}/archives"><label class="full">Archive reason<input name="reason" value="BOOT-0020 lifecycle completion"></label>
+        <div class="toolbar">{submit}<a class="button secondary" href="/opportunities/{quote(opportunity_id)}">Cancel</a></div></form></section>""",
+    )
+
+
+def archive_detail(
+    opportunity: dict[str, Any], archive: dict[str, Any], notice: str = ""
+) -> str:
+    opportunity_id = str(opportunity["opportunity_id"])
+    archive_id = str(archive["archive_id"])
+    provenance = archive.get("provenance", {})
+    evidence = provenance.get("evidence", [])
+    manifest = archive.get("package_manifest", {})
+    notice_html = f'<div class="notice">{escape(notice)}</div>' if notice else ""
+    evidence_trace = " → ".join(item.get("id", "") for item in evidence)
+    chain = " → ".join(
+        filter(
+            None,
+            [
+                provenance.get("opportunity", {}).get("id"),
+                evidence_trace,
+                provenance.get("knowledge_review", {}).get("id"),
+                provenance.get("assessment", {}).get("id"),
+                provenance.get("dossier", {}).get("id"),
+                archive_id,
+            ],
+        )
+    )
+    files = "".join(
+        f"<tr><td>{_text(item.get('name'))}</td><td>{_text(item.get('size'))}</td><td class=\"hash\">{_text(item.get('sha256'))}</td></tr>"
+        for item in manifest.get("files", [])
+    )
+    return _layout(
+        archive_id,
+        f"""<div class="eyebrow">{_text(archive_id)} · Controlled Archive</div><h1>Archived opportunity package</h1>
+        <p class="lede">Read-only BOOT-0020 closure artifact for {_text(opportunity.get('title'))}.</p>
+        <div class="toolbar"><a class="button secondary" href="/opportunities/{quote(opportunity_id)}?include_archived=true">← Opportunity</a>
+        <a class="button" href="/opportunities/{quote(opportunity_id)}/archives/{quote(archive_id)}/download">Download archive package</a>
+        <form method="post" action="/opportunities/{quote(opportunity_id)}/archives/{quote(archive_id)}/replay"><button type="submit">Replay archive</button></form>
+        <span class="badge archived">{_text(archive.get('archive_status'))}</span></div>{notice_html}
+        <div class="notice"><strong>Read-only archive.</strong> This package preserves persisted records and existing exports; it does not independently verify evidence or claim immutable storage.</div>
+        <div class="grid"><section class="card"><h2>Archive identity</h2><dl class="facts">
+        <div><dt>Archive ID</dt><dd>{_text(archive_id)}</dd></div><div><dt>Status</dt><dd>{_text(archive.get('archive_status'))}</dd></div>
+        <div><dt>Archived</dt><dd>{_text(archive.get('archive_timestamp'))}</dd></div><div><dt>Execution source</dt><dd>{_text(archive.get('archived_by'))}</dd></div>
+        <div><dt>Records</dt><dd>{_text(archive.get('record_count'))}</dd></div><div><dt>Files</dt><dd>{_text(archive.get('file_count'))}</dd></div>
+        <div><dt>Storage</dt><dd>{_text(archive.get('storage_location'))}</dd></div><div><dt>Format</dt><dd>v{_text(manifest.get('archive_format_version'))}</dd></div></dl>
+        <h2 style="margin-top:24px">Reason</h2><p>{_text(archive.get('archive_reason'))}</p></section>
+        <aside class="card"><h2>Integrity</h2><p class="hash">Package SHA-256<br>{_text(archive.get('package_hash'))}</p><p class="hash">Replay summary SHA-256<br>{_text(archive.get('replay_hash'))}</p></aside></div>
+        <section class="card" style="margin-top:22px"><h2>Provenance chain</h2><p class="hash">{_text(chain)}</p>
+        <h2 style="margin-top:24px">Package manifest</h2><div class="table-wrap"><table><thead><tr><th>File</th><th>Bytes</th><th>SHA-256</th></tr></thead><tbody>{files}</tbody></table></div></section>""",
     )
 
 

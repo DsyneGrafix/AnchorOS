@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import mimetypes
+import os
 import re
 import uuid
 from datetime import date
@@ -19,6 +20,13 @@ from .assessment import (
     build_engine_input,
     build_operational_result,
 )
+from .archive import (
+    ARCHIVE_FORMAT_VERSION,
+    build_archive_package,
+    canonical_json as archive_json,
+    sha256_bytes as archive_sha256,
+    verify_archive_package,
+)
 from .dossier import (
     DOSSIER_FORMAT_VERSION,
     build_artifacts,
@@ -28,7 +36,7 @@ from .dossier import (
 )
 from .errors import ApiError
 from .knowledge import KnowledgeModuleRegistry, execute_module, sha256_json
-from .repository import Repository
+from .repository import Repository, utcnow
 
 
 EVIDENCE_STATES = {"V", "S", "A", "U", "D"}
@@ -103,6 +111,7 @@ class AnchorIntelService:
         repository: Repository,
         engine: SpatialEngine | None = None,
         evidence_storage_dir: str | Path | None = None,
+        archive_storage_dir: str | Path | None = None,
         max_file_size: int = DEFAULT_MAX_FILE_SIZE,
         module_registry: KnowledgeModuleRegistry | None = None,
         knowledge_module_dir: str | Path | None = None,
@@ -116,6 +125,13 @@ class AnchorIntelService:
                 evidence_storage_dir = Path(repository.database_path).parent / "evidence-files"
         self.evidence_storage_dir = Path(evidence_storage_dir)
         self.evidence_storage_dir.mkdir(parents=True, exist_ok=True)
+        if archive_storage_dir is None:
+            if repository.database_path == ":memory:":
+                archive_storage_dir = Path("data/archives")
+            else:
+                archive_storage_dir = Path(repository.database_path).parent / "archives"
+        self.archive_storage_dir = Path(archive_storage_dir)
+        self.archive_storage_dir.mkdir(parents=True, exist_ok=True)
         self.max_file_size = max_file_size
         self.module_registry = module_registry or KnowledgeModuleRegistry(
             knowledge_module_dir
@@ -172,6 +188,11 @@ class AnchorIntelService:
         current_dossier = next(
             (item for item in dossiers if item["lifecycle_eligible"]), None
         )
+        archives = self.repository.list_archives(opportunity_id)
+        current_archive = next(
+            (item for item in archives if item.get("archive_status") == "Archived"),
+            None,
+        )
         workflow = record.get("workflow")
         if isinstance(workflow, list):
             record["workflow"] = [
@@ -195,6 +216,11 @@ class AnchorIntelService:
                     "state": "complete" if current_dossier else "pending",
                 }
                 if step.get("key") == "dossier"
+                else {
+                    **step,
+                    "state": "complete" if current_archive else "pending",
+                }
+                if step.get("key") == "archive"
                 else dict(step)
                 for step in workflow
             ]
@@ -205,6 +231,8 @@ class AnchorIntelService:
         record["current_assessment"] = current_assessment
         record["dossier_count"] = len(dossiers)
         record["current_dossier"] = current_dossier
+        record["archive_count"] = len(archives)
+        record["current_archive"] = current_archive
         return record
 
     def list_opportunities(self, include_archived: bool = False) -> list[dict[str, Any]]:
@@ -231,7 +259,9 @@ class AnchorIntelService:
     ) -> dict[str, Any]:
         """Merge business-facing form fields without losing assessment inputs."""
 
-        current = self.repository.get_opportunity(opportunity_id)
+        current = self.repository.get_opportunity(
+            opportunity_id, include_archived=True
+        )
         merged = clean_system_fields(current)
         for key in OPPORTUNITY_EDITABLE:
             if key in fields:
@@ -642,8 +672,6 @@ class AnchorIntelService:
             reasons.append("The opportunity is no longer available.")
             opportunity = None
         if opportunity is not None:
-            if opportunity.get("archived"):
-                reasons.append("The opportunity is archived.")
             if opportunity.get("revision") != review.get("opportunity_revision"):
                 reasons.append("The opportunity revision has changed.")
             current_trace = self._evidence_trace(
@@ -1039,8 +1067,6 @@ class AnchorIntelService:
             reasons.append("The opportunity is no longer available.")
             opportunity = None
         if opportunity is not None:
-            if opportunity.get("archived"):
-                reasons.append("The opportunity is archived.")
             if opportunity.get("revision") != provenance.get("opportunity", {}).get(
                 "revision"
             ):
@@ -1312,8 +1338,6 @@ class AnchorIntelService:
             opportunity = None
             reasons.append("The opportunity is no longer available.")
         if opportunity is not None:
-            if opportunity.get("archived"):
-                reasons.append("The opportunity is archived.")
             expected_revision = dossier.get("document", {}).get(
                 "opportunity_summary", {}
             ).get("revision")
@@ -1441,6 +1465,433 @@ class AnchorIntelService:
         }
         self.repository.record_dossier_replayed(dossier, actor, replay)
         return replay
+
+    def archive_readiness(self, opportunity_id: str) -> dict[str, Any]:
+        """Validate the current persisted provenance chain without rerunning it."""
+
+        opportunity = self.repository.get_opportunity(
+            opportunity_id, include_archived=True
+        )
+        errors: list[str] = []
+        warnings: list[str] = []
+        existing = self.repository.current_archive(opportunity_id)
+        if existing is not None:
+            errors.append(f"A current archive ({existing['archive_id']}) already exists.")
+        elif opportunity.get("archived"):
+            errors.append(
+                "The opportunity was archived without a BOOT-0020 archive package."
+            )
+        evidence = sorted(
+            self.repository.list_evidence(opportunity_id),
+            key=lambda item: str(item["evidence_id"]),
+        )
+        if not evidence:
+            errors.append("At least one active evidence record is required.")
+        review = next(
+            (
+                item
+                for item in self.list_knowledge_reviews(opportunity_id)
+                if item.get("lifecycle_eligible")
+            ),
+            None,
+        )
+        if review is None:
+            errors.append("A current completed Knowledge Review is required.")
+        assessment = next(
+            (
+                item
+                for item in self.list_operational_assessments(opportunity_id)
+                if item.get("lifecycle_eligible")
+            ),
+            None,
+        )
+        if assessment is None:
+            errors.append("A current completed S.P.A.T.I.A.L. assessment is required.")
+        dossier = next(
+            (
+                item
+                for item in self.list_dossiers(opportunity_id)
+                if item.get("lifecycle_eligible")
+            ),
+            None,
+        )
+        if dossier is None:
+            errors.append("A current Executive Opportunity Dossier is required.")
+        if assessment is not None and review is not None:
+            if assessment.get("knowledge_review_id") != review.get("review_id"):
+                errors.append("The assessment does not reference the current Knowledge Review.")
+        if dossier is not None and assessment is not None and review is not None:
+            if dossier.get("assessment_id") != assessment.get("assessment_id"):
+                errors.append("The dossier does not reference the current assessment.")
+            if dossier.get("knowledge_review_id") != review.get("review_id"):
+                errors.append("The dossier does not reference the current Knowledge Review.")
+            persisted = self.repository.get_dossier(
+                dossier["dossier_id"], include_artifacts=True, include_snapshot=True
+            )
+            if (
+                not persisted.get("html_report")
+                or not persisted.get("pdf_report")
+                or not persisted.get("document")
+            ):
+                errors.append("Required persisted dossier exports are unavailable.")
+        return {
+            "opportunity_id": opportunity_id,
+            "ready": not errors,
+            "errors": list(dict.fromkeys(errors)),
+            "warnings": list(dict.fromkeys(warnings)),
+            "opportunity": opportunity,
+            "evidence": evidence,
+            "knowledge_review": review,
+            "assessment": assessment,
+            "dossier": dossier,
+            "existing_archive": existing,
+            "archive_format_version": ARCHIVE_FORMAT_VERSION,
+            "bounded_execution_notice": (
+                "Archive creation uses only persisted local records and existing dossier "
+                "outputs. It does not browse the internet, invoke external AI, create "
+                "evidence, or rerun upstream analysis."
+            ),
+        }
+
+    @staticmethod
+    def _archive_provenance(
+        opportunity: dict[str, Any],
+        evidence: list[dict[str, Any]],
+        review: dict[str, Any],
+        assessment: dict[str, Any],
+        dossier: dict[str, Any],
+    ) -> dict[str, Any]:
+        return {
+            "opportunity": {
+                "id": opportunity["opportunity_id"],
+                "revision": opportunity["revision"],
+            },
+            "evidence": [
+                {
+                    "id": item["evidence_id"],
+                    "revision": item["revision"],
+                    "sha256": item.get("sha256", ""),
+                }
+                for item in evidence
+            ],
+            "knowledge_review": {
+                "id": review["review_id"],
+                "revision": review["revision"],
+                "module_id": review["module_id"],
+                "module_version": review["module_version"],
+                "module_integrity_hash": review.get("module_integrity_hash", ""),
+                "output_hash": review.get("output_hash", ""),
+            },
+            "assessment": {
+                "id": assessment["assessment_id"],
+                "revision": assessment["revision"],
+                "engine_version": assessment.get("engine_version", ""),
+                "replay_hash": assessment.get("replay_hash", ""),
+            },
+            "dossier": {
+                "id": dossier["dossier_id"],
+                "revision": dossier["revision"],
+                "format_version": dossier["format_version"],
+                "input_hash": dossier["input_hash"],
+                "replay_hash": dossier["replay_hash"],
+            },
+        }
+
+    def _opportunity_audit_summary(
+        self, opportunity_id: str, artifact_ids: set[str]
+    ) -> dict[str, Any]:
+        events = []
+        for event in reversed(self.repository.list_audit(500)):
+            details = event.get("details", {})
+            if (
+                event.get("entity_id") in artifact_ids
+                or details.get("opportunity_id") == opportunity_id
+            ):
+                events.append(event)
+        return {"opportunity_id": opportunity_id, "events": events}
+
+    def create_archive(
+        self,
+        opportunity_id: str,
+        actor: str,
+        reason: str = "BOOT-0020 lifecycle completion",
+    ) -> dict[str, Any]:
+        readiness = self.archive_readiness(opportunity_id)
+        if not readiness["ready"]:
+            code = (
+                "archive_already_exists"
+                if readiness.get("existing_archive") is not None
+                else "archive_not_ready"
+            )
+            raise ApiError(
+                409,
+                code,
+                "The persisted lifecycle is not ready for archival",
+                {"reasons": readiness["errors"]},
+            )
+        opportunity = readiness["opportunity"]
+        evidence = readiness["evidence"]
+        review = readiness["knowledge_review"]
+        assessment = readiness["assessment"]
+        dossier = readiness["dossier"]
+        assert review is not None and assessment is not None and dossier is not None
+
+        dossier_replay = self.replay_dossier(
+            opportunity_id, dossier["dossier_id"], actor
+        )
+        if not dossier_replay["match"]:
+            raise ApiError(
+                409,
+                "dossier_replay_failed",
+                "The current dossier did not pass deterministic replay",
+                {"replay": dossier_replay},
+            )
+        archive_id = self.repository.next_archive_id()
+        archive_timestamp = utcnow()
+        raw_review = self.repository.get_knowledge_review(
+            opportunity_id, review["review_id"]
+        )
+        raw_assessment = self.repository.get_assessment(
+            assessment["assessment_id"], include_report=True, include_snapshot=True
+        )
+        raw_dossier = self.repository.get_dossier(
+            dossier["dossier_id"], include_artifacts=True, include_snapshot=True
+        )
+        provenance = self._archive_provenance(
+            opportunity, evidence, raw_review, raw_assessment, raw_dossier
+        )
+        replay_summary = {
+            "dossier": dossier_replay,
+            "assessment": {
+                "assessment_id": raw_assessment["assessment_id"],
+                "replay_hash": raw_assessment.get("replay_hash", ""),
+                "engine_version": raw_assessment.get("engine_version", ""),
+            },
+            "knowledge_review": {
+                "review_id": raw_review["review_id"],
+                "module_id": raw_review["module_id"],
+                "module_version": raw_review["module_version"],
+                "module_integrity_hash": raw_review.get("module_integrity_hash", ""),
+                "output_hash": raw_review.get("output_hash", ""),
+            },
+        }
+        artifact_ids = {
+            opportunity_id,
+            *(item["evidence_id"] for item in evidence),
+            raw_review["review_id"],
+            raw_assessment["assessment_id"],
+            raw_dossier["dossier_id"],
+        }
+        dossier_record = {
+            key: value
+            for key, value in raw_dossier.items()
+            if key not in {"html_report", "pdf_report", "input_snapshot"}
+        }
+        members = {
+            "opportunity.json": archive_json(opportunity),
+            "evidence.json": archive_json(evidence),
+            "knowledge-review.json": archive_json(raw_review),
+            "assessment.json": archive_json(raw_assessment),
+            "dossier.json": archive_json(dossier_record),
+            "dossier.html": raw_dossier["html_report"].encode("utf-8"),
+            "dossier.pdf": raw_dossier["pdf_report"],
+            "audit-summary.json": archive_json(
+                self._opportunity_audit_summary(opportunity_id, artifact_ids)
+            ),
+            "replay-summary.json": archive_json(replay_summary),
+        }
+        record_count = 4 + len(evidence)
+        package, manifest = build_archive_package(
+            archive_id=archive_id,
+            opportunity_id=opportunity_id,
+            archive_timestamp=archive_timestamp,
+            provenance=provenance,
+            record_count=record_count,
+            members=members,
+        )
+        package_hash = archive_sha256(package)
+        preflight = verify_archive_package(
+            package,
+            expected_package_hash=package_hash,
+            expected_manifest=manifest,
+            expected_provenance=provenance,
+        )
+        if not preflight["match"]:
+            raise ApiError(
+                500,
+                "archive_preflight_failed",
+                "The generated archive did not pass its own integrity verification",
+                {"reasons": preflight["reasons"]},
+            )
+        replay_hash = archive_sha256(archive_json(replay_summary))
+        filename = f"{archive_id}.zip"
+        destination = self.archive_storage_dir / filename
+        temporary = self.archive_storage_dir / f".{archive_id}.{uuid.uuid4().hex}.tmp"
+        installed_package = False
+        details = {
+            "opportunity_id": opportunity_id,
+            "dossier_id": raw_dossier["dossier_id"],
+            "assessment_id": raw_assessment["assessment_id"],
+            "knowledge_review_id": raw_review["review_id"],
+            "evidence_trace": provenance["evidence"],
+            "package_hash": package_hash,
+            "replay_result": "PASS",
+            "result_summary": "Archive package passed preflight verification",
+        }
+        self.repository.record_archive_event(
+            actor=actor,
+            action="archive.prepared",
+            archive_id=archive_id,
+            details=details,
+        )
+        try:
+            temporary.write_bytes(package)
+            try:
+                os.link(temporary, destination)
+            except FileExistsError as exc:
+                raise ApiError(
+                    409,
+                    "archive_package_exists",
+                    "The generated archive package name already exists in controlled storage",
+                ) from exc
+            temporary.unlink()
+            installed_package = True
+            created = self.repository.create_archive(
+                {
+                    "archive_id": archive_id,
+                    "opportunity_id": opportunity_id,
+                    "opportunity_revision": opportunity["revision"],
+                    "evidence_trace": provenance["evidence"],
+                    "knowledge_review_id": raw_review["review_id"],
+                    "knowledge_review_revision": raw_review["revision"],
+                    "assessment_id": raw_assessment["assessment_id"],
+                    "assessment_revision": raw_assessment["revision"],
+                    "dossier_id": raw_dossier["dossier_id"],
+                    "dossier_format_version": raw_dossier["format_version"],
+                    "archive_status": "Archived",
+                    "archive_reason": str(reason).strip() or "Lifecycle completion",
+                    "archived_by": actor,
+                    "archive_timestamp": archive_timestamp,
+                    "package_manifest": manifest,
+                    "package_hash": package_hash,
+                    "replay_hash": replay_hash,
+                    "record_count": record_count,
+                    "file_count": manifest["file_count"],
+                    "storage_location": f"archives/{filename}",
+                    "provenance": provenance,
+                },
+                actor,
+            )
+        except Exception as exc:
+            temporary.unlink(missing_ok=True)
+            if installed_package:
+                destination.unlink(missing_ok=True)
+            self.repository.record_archive_event(
+                actor=actor,
+                action="archive.failed",
+                archive_id=archive_id,
+                details={**details, "replay_result": "FAIL", "result_summary": str(exc)},
+            )
+            raise
+        return created
+
+    def list_archives(self, opportunity_id: str) -> list[dict[str, Any]]:
+        return self.repository.list_archives(opportunity_id)
+
+    def get_archive(self, opportunity_id: str, archive_id: str) -> dict[str, Any]:
+        archive = self.repository.get_archive(archive_id)
+        if archive["opportunity_id"] != opportunity_id:
+            raise ApiError(
+                404,
+                "archive_not_found",
+                f"Archive {archive_id} was not found for {opportunity_id}",
+            )
+        return archive
+
+    def _archive_path(self, archive: dict[str, Any]) -> Path:
+        expected_name = f"{archive['archive_id']}.zip"
+        stored_name = Path(str(archive.get("storage_location", ""))).name
+        if stored_name != expected_name:
+            raise ApiError(
+                409,
+                "unsafe_archive_location",
+                "The persisted archive storage location is invalid",
+            )
+        path = (self.archive_storage_dir / stored_name).resolve()
+        if path.parent != self.archive_storage_dir.resolve():
+            raise ApiError(409, "unsafe_archive_location", "Archive path escaped storage")
+        return path
+
+    def archive_artifact(
+        self, opportunity_id: str, archive_id: str, actor: str
+    ) -> tuple[bytes, str, str]:
+        archive = self.get_archive(opportunity_id, archive_id)
+        path = self._archive_path(archive)
+        if not path.is_file():
+            raise ApiError(404, "archive_package_not_found", "Archive package is unavailable")
+        payload = path.read_bytes()
+        self.repository.record_archive_event(
+            actor=actor,
+            action="archive.downloaded",
+            archive_id=archive_id,
+            details={
+                "opportunity_id": opportunity_id,
+                "dossier_id": archive["dossier_id"],
+                "assessment_id": archive["assessment_id"],
+                "knowledge_review_id": archive["knowledge_review_id"],
+                "evidence_trace": archive["evidence_trace"],
+                "package_hash": archive["package_hash"],
+                "replay_result": "NOT_RUN",
+                "result_summary": "Archive package downloaded",
+            },
+        )
+        return payload, "application/zip", f"{archive_id}.zip"
+
+    def replay_archive(
+        self, opportunity_id: str, archive_id: str, actor: str
+    ) -> dict[str, Any]:
+        archive = self.get_archive(opportunity_id, archive_id)
+        path = self._archive_path(archive)
+        if not path.is_file():
+            result = {
+                "result": "FAIL",
+                "match": False,
+                "checks": {},
+                "reasons": ["The persisted archive package is unavailable."],
+                "stored_package_hash": archive["package_hash"],
+                "computed_package_hash": "",
+            }
+        else:
+            result = verify_archive_package(
+                path.read_bytes(),
+                expected_package_hash=archive["package_hash"],
+                expected_manifest=archive["package_manifest"],
+                expected_provenance=archive["provenance"],
+            )
+        result.update(
+            {
+                "archive_id": archive_id,
+                "opportunity_id": opportunity_id,
+                "verified_at": utcnow(),
+            }
+        )
+        action = "archive.replayed" if result["match"] else "archive.replay_failed"
+        self.repository.record_archive_event(
+            actor=actor,
+            action=action,
+            archive_id=archive_id,
+            details={
+                "opportunity_id": opportunity_id,
+                "dossier_id": archive["dossier_id"],
+                "assessment_id": archive["assessment_id"],
+                "knowledge_review_id": archive["knowledge_review_id"],
+                "evidence_trace": archive["evidence_trace"],
+                "package_hash": archive["package_hash"],
+                "replay_result": result["result"],
+                "result_summary": "; ".join(result["reasons"]) or "All checks passed",
+            },
+        )
+        return result
 
     def run_assessment(
         self,

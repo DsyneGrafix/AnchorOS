@@ -14,7 +14,7 @@ from .service import AnchorIntelService
 
 def handler_for(application: AnchorIntelApplication):
     class Handler(BaseHTTPRequestHandler):
-        server_version = "AnchorIntelAPI/0.5.0"
+        server_version = "AnchorIntelAPI/0.6.0"
 
         def _serve(self):
             length = int(self.headers.get("Content-Length", "0"))

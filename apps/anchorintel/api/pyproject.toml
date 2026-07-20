@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "anchorintel-api"
-version = "0.5.0"
+version = "0.6.0"
 description = "AnchorOS service API for the S.P.A.T.I.A.L. infrastructure opportunity assessment lifecycle"
 readme = "README.md"
 requires-python = ">=3.10"

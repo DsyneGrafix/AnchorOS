@@ -1,127 +1,108 @@
 # AnchorIntel API v1 Architecture
 
-## Sprint 5 boundary
+## Sprint 6 boundary
 
 ```text
-Opportunity → Evidence → Knowledge Review → S.P.A.T.I.A.L. Assessment → Executive Dossier
- OI-*          EV-*          KR-*                    AS-*                  ED-*
+Opportunity → Evidence → Knowledge Review → Assessment → Dossier → Archive
+ OI-*          EV-*          KR-*             AS-*       ED-*       AR-*
 ```
 
-Sprint 5 implements only the persisted Assessment → Dossier seam. It preserves
-Sprint 1–4 services, adds no Knowledge Modules, does not redesign or rerun the
-S.P.A.T.I.A.L. engine during reporting, and does not implement Archive Results.
+Sprint 6 implements only Dossier → controlled Archive and terminal read-only
+closure. It preserves Sprint 1–5 services, adds no commercial capability, does
+not add Knowledge Modules, and does not rerun upstream analysis.
 
 ## Layering
 
 ```text
-Browser / API clients / future domain applications
-                         ↓
-AnchorIntel dossier readiness and continuation-validity service
-                         ↓
-Persisted opportunity + evidence + Knowledge Review + assessment
-                         ↓
-Pure dossier renderer v1.0.0
-                 ↙       ↓       ↘
-          canonical JSON  HTML  PDF
-                         ↓
-SQLite ED record + immutable snapshot + hashes + audit
+Browser and API clients
+        ↓
+Archive readiness and provenance validation
+        ↓
+Persisted OI + active EV + current KR + current AS + current ED
+        ↓
+Deterministic archive builder v1.0.0
+        ↓
+External ZIP in data/archives + SQLite AR metadata + audit
+        ↓
+Read-only opportunity and replay verifier
 ```
 
-AnchorOS supplies platform lifecycle and future gateway services. AnchorIntel
-owns resource contracts and provenance. S.P.A.T.I.A.L. remains the sole owner of
-its recommendation, score, confidence, gate, and risk semantics. The reporting
-layer copies those values exactly and never calculates a new decision.
+S.P.A.T.I.A.L. owns recommendation semantics. The dossier copies those semantics
+exactly. The archive copies persisted records and existing dossier outputs; it
+does not compute a decision.
 
-## Readiness
+## Archive record
 
-Generation fails closed unless:
+Each `AR-*` row stores:
 
-- the opportunity exists and is active;
-- active evidence exists;
-- a current completed Knowledge Review is linked by the assessment;
-- the selected operational assessment exists and is lifecycle-eligible; and
-- all assessment continuation-validity rules still pass.
-
-An optional `assessment_id` may be supplied, but stale assessments are rejected.
-The default is the current lifecycle-eligible operational assessment.
-
-## Immutable dossier snapshot
-
-Each `ED-*` row stores:
-
-| Surface | Stored content |
+| Surface | Persisted value |
 |---|---|
-| Opportunity | ID, business summary, revision, created/updated timestamps |
-| Evidence | Sorted active IDs, titles, status, confidence, revision, source, file hash |
-| Knowledge Review | ID, revision, module/version/hash, output hash, bounded summaries |
-| Assessment | ID, revision, exact result subset, engine/adapter versions, hashes, execution time |
-| Canonical report | Executive, opportunity, evidence, review, assessment, trace, replay, footer |
-| Exports | Standalone HTML and PDF bytes; JSON derives exactly from the stored canonical report |
-| Identity | Input hash, replay hash, format version, predecessor link, timestamps |
+| Identity | Archive and opportunity IDs |
+| Revisions | Opportunity, evidence trace, review, and assessment revisions |
+| Provenance | Review, module/version/hash, assessment/engine/hash, dossier/version/hash |
+| Control | Status, reason, execution source, archive timestamp |
+| Package | Manifest, SHA-256, replay-summary SHA-256, counts, controlled location |
+| Metadata | Created and updated timestamps |
 
-Generation time is stored as row metadata and is excluded from report identity.
-The report-state timestamp is the maximum relevant persisted input timestamp.
-Identical inputs therefore produce identical JSON, HTML, PDF, input hashes, and
-replay hashes.
+The source opportunity revision and `updated_at` do not change during archive
+closure. Archive state lives in the opportunity container columns and `archives`
+row, preserving upstream replay identity.
 
-## Idempotency and replay
+## Deterministic package
 
-`(opportunity_id, input_hash)` is unique. Repeating generation over identical
-records returns the existing dossier instead of creating a time-dependent copy.
+The package builder uses sorted canonical JSON, fixed ZIP member order, fixed ZIP
+timestamps and permissions, and fixed compression settings. `manifest.json`
+contains the archive identity, record/file counts, provenance, boundary notice,
+and SHA-256/size for every other member. The package hash covers the final ZIP.
 
-Replay reads `input_snapshot_json`, invokes only the pure report renderer, and
-compares:
+Archive creation calls dossier replay but never assessment execution, Knowledge
+Module execution, evidence acquisition, external AI, or internet access.
 
-- canonical document and JSON;
-- exact HTML text;
-- exact PDF bytes;
-- input hash; and
-- dossier replay hash.
+## Replay
 
-It records `dossier.replayed` and does not rerun upstream logic or advance state.
+Archive replay reads only the persisted ZIP and archive row. It verifies:
 
-## Continuation validity
+- package SHA-256;
+- exact persisted manifest;
+- safe, unique, complete member names;
+- each included file hash and size;
+- opportunity/evidence/review/assessment/dossier IDs;
+- all stored revisions;
+- manifest-to-database provenance equality;
+- dossier and assessment replay hashes; and
+- Knowledge Module integrity hash.
 
-An `ED-*` artifact remains lifecycle-eligible only while:
-
-| Condition | Stale when |
-|---|---|
-| Opportunity | Archived or revision differs |
-| Evidence | Active trace changes through the source assessment |
-| Review | Missing, incomplete, superseded, stale, or provenance differs |
-| Assessment | Missing, superseded, stale, or no longer lifecycle-eligible |
-| Dossier | A successor explicitly supersedes it |
-
-Stale dossiers remain durable exports. A current Knowledge Review, assessment,
-and dossier are the recovery path; prior artifacts are never overwritten.
+Replay records `archive.replayed` or `archive.replay_failed` and returns `PASS`
+or `FAIL` with a reason summary. It does not silently repair or replace a package.
 
 ## Lifecycle derivation
 
-The Opportunity Service derives state from persisted records on every read:
+The Opportunity Service derives every step from persisted records:
 
-- Attach Evidence: at least one active evidence row;
-- Knowledge Module Review: a current completed review;
-- Run S.P.A.T.I.A.L.: a current operational assessment;
-- Generate Executive Opportunity Dossier: a current `ED-*` row; and
-- Archive Results: pending in Sprint 5.
+- Attach Evidence: active evidence exists;
+- Knowledge Module Review: a current completed review exists;
+- Run S.P.A.T.I.A.L.: a current assessment exists;
+- Generate Executive Opportunity Dossier: a current dossier exists; and
+- Archive Results: a persisted current `Archived` `AR-*` row exists.
 
-There is no `OI-000001` special case in lifecycle calculation. Reference seeding
-uses the same public services. A real `KR-000002 → AS-000001` relationship is
-preserved in the dossier instead of being rewritten to the fresh-database example.
+There is no `OI-000001` lifecycle special case. Successful archive creation also
+sets the opportunity container to archived/read-only. Upstream records remain
+current because archival itself is not treated as upstream staleness.
 
 ## Additive schema migration
 
-Repository initialization creates `executive_dossiers` with foreign keys to
-opportunity, Knowledge Review, assessment, and optional predecessor. A unique
-input-hash constraint enforces idempotency. Initialization is idempotent and
-drops or rewrites no existing records.
+Repository initialization creates `archives`, an opportunity/date index, and a
+partial unique index preventing multiple `Prepared`/`Archived` records for one
+opportunity. Foreign keys reference the opportunity, review, assessment, and
+dossier. Initialization is idempotent and drops or rewrites no prior data.
 
-Sprint 4 source cannot read this table as a business resource, so safe rollback
-restores the complete pre-install source and SQLite/evidence backup together.
+Generated ZIP files live outside SQLite. A database row without its corresponding
+external file replays `FAIL`; backup and rollback must therefore preserve source,
+SQLite, evidence storage, and archive storage together.
 
 ## Security boundary
 
-The SQLite audit log and hashes are application records, not tamper-evident
-proof. The reference server lacks production identity, authorization, isolation,
-encryption, gateway, availability, and load controls. No dossier establishes
-source truth, external verification, professional advice, or customer approval.
+Archive hashes and audit rows are integrity records, not immutable proof. The
+reference server lacks production identity, authorization, tenant isolation,
+encryption, gateway, HA, and load controls. No archive establishes source truth,
+external verification, professional advice, or customer approval.

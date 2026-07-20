@@ -177,7 +177,7 @@ class ApiTestCase(unittest.TestCase):
         status, health, _ = self.request("GET", "/health")
         self.assertEqual(status, 200)
         self.assertEqual(health["status"], "ok")
-        self.assertEqual(health["version"], "0.5.0")
+        self.assertEqual(health["version"], "0.6.0")
         status, contract, _ = self.request("GET", "/v1/openapi.json")
         self.assertEqual(status, 200)
         self.assertIn("/opportunities/{opportunity_id}/evidence", contract["paths"])
@@ -205,6 +205,13 @@ class ApiTestCase(unittest.TestCase):
         )
         self.assertIn(
             "/opportunities/{opportunity_id}/dossiers/{dossier_id}/{format}",
+            contract["paths"],
+        )
+        self.assertIn(
+            "/opportunities/{opportunity_id}/archives", contract["paths"]
+        )
+        self.assertIn(
+            "/opportunities/{opportunity_id}/archives/{archive_id}/replay",
             contract["paths"],
         )
         self.assertIn("/v1/assessments/run", contract["paths"])
@@ -976,6 +983,7 @@ class ApiTestCase(unittest.TestCase):
                 }
             self.assertIn("knowledge_reviews", tables)
             self.assertIn("executive_dossiers", tables)
+            self.assertIn("archives", tables)
         finally:
             migrated.close()
 

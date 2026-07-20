@@ -11,6 +11,10 @@ backups/
 data/evidence-files/*
 !data/evidence-files/.gitignore
 
+# Generated BOOT lifecycle archives are runtime data, never source control.
+data/archives/*
+!data/archives/.gitignore
+
 # Python runtime artifacts
 __pycache__/
 *.py[cod]
