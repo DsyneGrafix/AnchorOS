@@ -1,6 +1,6 @@
-# Verification Record — AnchorIntel API v0.3.0 Sprint 3
+# Verification Record — AnchorIntel API v0.4.0 Sprint 4
 
-Verification date: 2026-07-19
+Verification date: 2026-07-20
 
 ## AnchorIntel API suite
 
@@ -11,36 +11,27 @@ PYTHONPATH="../spatial-opportunity-engine:." \
   python3 -m unittest discover -s tests -v
 ```
 
-The 22 tests use temporary databases, file stores, module directories, and
-loopback HTTP servers. They cover:
+The 27 tests use temporary databases, file stores, module directories, and
+loopback HTTP servers. They cover all retained Sprint 1–3 tests plus:
 
-1. all retained Sprint 1 opportunity behavior;
-2. all retained Sprint 2 evidence, file, revision, archive, lifecycle, and
-   migration behavior;
-3. health and OpenAPI v0.3.0 discovery;
-4. module list/retrieve and browser views;
-5. required module fields and integrity-hash rejection;
-6. unknown module and missing opportunity rejection;
-7. deterministic review output and hashes;
-8. active-only evidence consumption and archived-evidence exclusion;
-9. exact evidence revision/hash/status/confidence traceability;
-10. review persistence after repository restart;
-11. draft completion and lifecycle eligibility;
-12. failed-executor persistence and failure audit;
-13. opportunity-revision staleness;
-14. evidence-revision and archive staleness;
-15. rerun/supersession with prior review preservation;
-16. module load, review start/complete/fail/supersede/rerun/stale audit events;
-17. generated OI-000001/EV-000001/KR-000001 reference workflow and bounded
-    disclaimers;
-18. Knowledge Module run/detail and evidence-trace UI; and
-19. existing assessment, report, revalidation, queue, evidence-promotion, and
-    AnchorOS adapter regressions.
+1. OpenAPI v0.4.0 assessment and replay discovery;
+2. generated `OI-000001 → EV-000001 → KR-000001 → AS-000001` provenance;
+3. readiness and bounded-execution UI;
+4. persisted recommendation, score, confidence, risk, gates, assumptions,
+   explanation, evidence trace, versions, and replay hash;
+5. deterministic results and hashes for identical inputs;
+6. exact stored-snapshot replay;
+7. stale opportunity revision rejection;
+8. stale evidence trace rejection;
+9. superseded Knowledge Review rejection;
+10. assessment staleness and lifecycle reversal;
+11. assessment persistence and replay after repository restart; and
+12. assessment completion/replay/stale audit behavior.
 
 Observed source-tree result:
 
 ```text
-Ran 22 tests in 12.297s
+Ran 27 tests in 14.998s
 
 OK
 ```
@@ -64,19 +55,33 @@ python3 -m py_compile anchorintel_api/*.py tests/test_api.py
 bash -n start-anchorintel.sh
 ```
 
+## Reference seed smoke check
+
+A fresh temporary SQLite database is seeded through the public bootstrap. The
+check requires these generated records and behavior:
+
+```text
+OI-000001 / revision 1
+EV-000001 / revision 1
+KR-000001 / Completed / Moderate
+AS-000001 / Hold / 33.2 / Low / replay match true
+Run S.P.A.T.I.A.L. lifecycle complete
+Executive Opportunity Dossier pending
+```
+
 ## Extracted-package verification
 
-The final ZIP is extracted into an isolated temporary AnchorOS-shaped tree. The
-unchanged sibling engine is linked only for test resolution. The API suite,
-engine suite, Python compilation, launcher syntax check, manifest hash check,
-reference seed smoke test, and exclusion scan are rerun against the extracted
-files. Final observed timings and ZIP digest are recorded in
-`SPRINT3-PACKAGE-MANIFEST.txt`.
+The final ZIP is extracted into an isolated AnchorOS-shaped tree. The unchanged
+sibling engine is copied only for dependency resolution. The API suite, engine
+suite, Python compilation, launcher syntax, manifest hash verification,
+reference seed/replay smoke check, and exclusion scan are rerun against the
+extracted package. Final timings and ZIP digest are recorded in the Sprint 4
+manifest and delivery message.
 
 ## Scope of evidence
 
 These checks demonstrate the bundled contracts in the tested Python runtime.
 They do not establish production security, concurrent multi-process safety,
 high availability, load capacity, authenticated AnchorOS registry integration,
-evidence truth, current Florida conditions, independent verification,
+source truth, current Florida conditions, independent verification,
 cryptographic immutability, or tamper-evident audit storage.

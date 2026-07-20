@@ -14,7 +14,7 @@ class AnchorIntelAnchorOSService:
     """Small lifecycle surface that can be registered by an AnchorOS module adapter."""
 
     service_id = "AOS-SVC-ANCHORINTEL-API"
-    version = "0.3.0"
+    version = "0.4.0"
 
     def __init__(self, database_path="data/anchorintel.db", host="127.0.0.1", port=8080):
         self.database_path = database_path

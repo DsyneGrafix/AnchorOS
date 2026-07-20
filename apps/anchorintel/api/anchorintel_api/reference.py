@@ -11,6 +11,7 @@ from .service import AnchorIntelService
 REFERENCE_OPPORTUNITY_ID = "OI-000001"
 REFERENCE_EVIDENCE_ID = "EV-000001"
 REFERENCE_MODULE_ID = "AKM-GEO-FL-001"
+REFERENCE_ASSESSMENT_ID = "AS-000001"
 
 REFERENCE_OPPORTUNITY: dict[str, Any] = {
     "opportunity_id": REFERENCE_OPPORTUNITY_ID,
@@ -131,6 +132,7 @@ def ensure_reference_records(
     opportunity, opportunity_created = ensure_reference_opportunity(service, actor)
     evidence, evidence_created = ensure_reference_evidence(service, actor)
     review, review_created = ensure_reference_review(service, actor)
+    assessment, assessment_created = ensure_reference_assessment(service, actor)
     return {
         "opportunity": opportunity,
         "opportunity_created": opportunity_created,
@@ -138,6 +140,8 @@ def ensure_reference_records(
         "evidence_created": evidence_created,
         "knowledge_review": review,
         "knowledge_review_created": review_created,
+        "assessment": assessment,
+        "assessment_created": assessment_created,
     }
 
 
@@ -165,6 +169,32 @@ def ensure_reference_review(
             REFERENCE_MODULE_ID,
             actor,
             review_status="Completed",
+        ),
+        True,
+    )
+
+
+def ensure_reference_assessment(
+    service: AnchorIntelService, actor: str = "anchorintel-bootstrap"
+) -> tuple[dict[str, Any] | None, bool]:
+    """Generate AS-000001 once when the persisted reference chain is current."""
+
+    assessments = service.repository.list_assessments(
+        REFERENCE_OPPORTUNITY_ID, assessment_kind="spatial_lifecycle"
+    )
+    if assessments:
+        return service.get_operational_assessment(
+            REFERENCE_OPPORTUNITY_ID, assessments[0]["assessment_id"]
+        ), False
+    readiness = service.assessment_readiness(REFERENCE_OPPORTUNITY_ID)
+    if not readiness["ready"]:
+        return None, False
+    return (
+        service.run_spatial_assessment(
+            REFERENCE_OPPORTUNITY_ID,
+            actor,
+            str(readiness["knowledge_review"]["review_id"]),
+            "Reference S.P.A.T.I.A.L. assessment seed",
         ),
         True,
     )

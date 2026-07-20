@@ -1,119 +1,146 @@
 # AnchorIntel API v1 Architecture
 
-## Decision-operating-system boundary
+## Sprint 4 boundary
 
 ```text
-Research → Evidence → Knowledge Modules → Opportunity → Assessment
-         → Decision → Lifecycle → Revalidation → Learning → Knowledge Library
+Opportunity → Evidence → Knowledge Review → S.P.A.T.I.A.L. Assessment
+ OI-*          EV-*          KR-*                    AS-*
 ```
 
-Sprint 3 implements only the Evidence → Knowledge Modules → Opportunity seam.
-It preserves the Sprint 1 and Sprint 2 services and prepares structured output
-for later assessment without changing S.P.A.T.I.A.L., reporting, or dossier
-behavior.
+Sprint 4 implements only the Knowledge Review → Assessment seam. It preserves
+Sprint 1–3 services, does not generate an Executive Dossier (`ED-*`), does not
+add Knowledge Modules, and does not change the S.P.A.T.I.A.L. engine.
 
 ## Layering
 
 ```text
-Browser / API clients / future AnchorFiber applications
+Browser / API clients / future domain applications
                          ↓
-AnchorIntel business services and lifecycle derivation
+AnchorIntel readiness and continuation-validity service
                          ↓
-Opportunity + active evidence snapshots
+Persisted opportunity + active evidence + current Knowledge Review
                          ↓
-Versioned local Knowledge Module registry and deterministic executor
+AnchorIntel deterministic adapter v1.0.0
                          ↓
-SQLite review records, evidence traces, replay hashes, audit events
+Existing S.P.A.T.I.A.L. engine v0.1.0 (unchanged)
                          ↓
-Existing S.P.A.T.I.A.L. adapter (unchanged in Sprint 3)
+SQLite AS record + immutable snapshot + provenance + replay hash + audit
 ```
 
-AnchorOS supplies platform lifecycle and future authenticated gateway services.
-AnchorIntel owns opportunity, evidence, knowledge-review, assessment, reporting,
-and lifecycle contracts. S.P.A.T.I.A.L. owns its assessment methodology. Domain
-applications consume these stable capabilities rather than importing internal
-calculations.
+AnchorOS supplies platform lifecycle and future gateway services. AnchorIntel
+owns operational resource contracts and persisted provenance. S.P.A.T.I.A.L.
+owns scoring, evidence confidence, gates, fatal-constraint precedence, and the
+recommendation taxonomy. Applications request an assessment capability rather
+than invoking internal score calculations.
 
-## Source definitions versus runtime records
+## Readiness and strict execution
 
-| Surface | Content | Location |
-|---|---|---|
-| Knowledge Module source | ID, version, scope, questions, criteria, evidence categories, limitations, dates, output schema, integrity hash | `anchorintel_api/knowledge_modules/*.json` |
-| Knowledge Review runtime | Module/version/hash, opportunity revision, evidence trace, input/output hashes, output, confidence, status, revisions, supersession, timestamps | SQLite `knowledge_reviews` |
-| Evidence metadata | Controlled metadata, revision, archive state, file metadata and hash | SQLite `evidence` |
-| Evidence bytes | Uploaded file content | `data/evidence-files/` |
+The opportunity-scoped assessment service fails closed unless:
 
-Module loading validates required fields, ID format, dates, status, question
-shape, uniqueness, and canonical SHA-256 integrity. Invalid or modified modules
-fail closed at registry construction.
+- the opportunity exists and is active;
+- at least one active evidence record exists;
+- a selected Knowledge Review exists, is `Completed`, and is not superseded;
+- its opportunity revision and evidence trace still match;
+- its module remains Active with the same version and integrity hash; and
+- the explicit adapter output satisfies the unchanged engine contract.
 
-## Deterministic execution
+A selected stale review returns HTTP 409. The legacy `/v1/assessments/run`
+route remains available for pre-existing full engine profiles and does not
+participate in the Sprint 4 lifecycle state.
 
-The `AKM-GEO-FL-001` executor accepts no network, model, or clock input. The
-review snapshot consists of:
+## Adapter contract
 
-1. module ID, version, and integrity hash;
-2. persisted opportunity fields and revision;
-3. sorted active evidence records and revisions;
-4. exact evidence trace; and
-5. sorted IDs of archived evidence excluded from active inputs.
+The engine requires eight dimension assessments, six mandatory gates, evidence,
+and lifecycle controls. The adapter follows two rules:
 
-Canonical JSON produces an input snapshot hash. The structured result is also
-canonicalized and hashed. Two executions over identical inputs produce equal
-input hashes, output objects, and output hashes. Execution identity and time are
-stored separately in the review row, so they do not introduce output variance.
+1. complete persisted dimension/gate/lifecycle structures pass through; and
+2. absent structures receive conservative, documented values based only on the
+   persisted opportunity, active evidence, current review, and module dates.
 
-## Review persistence and supersession
+The geographic module is not stretched into a funding, commercial, or delivery
+finding. Uncovered domains remain low, provisional, or failed. Adapter
+derivation text is stored and shown beside the engine explanation. This mapping
+is versioned independently as `1.0.0` and participates in staleness.
 
-Public IDs are sequential (`KR-000001`, `KR-000002`, ...). Normal rerun creates
-a new row linked by `supersedes_review_id`, changes the prior row to
-`Superseded`, and records both supersession and rerun audit events. Prior output
-is preserved. A failed executor creates an `Incomplete` review with `Unknown`
-confidence and records a failure audit event.
+## Immutable assessment snapshot
 
-## Dynamic staleness and continuation validity
+Each `AS-*` row stores:
 
-A completed review is lifecycle-eligible only while the conditions that
-justified it remain true:
+| Surface | Stored content |
+|---|---|
+| Opportunity | Exact business fields and revision |
+| Evidence | Sorted active records, revisions, classifications, and file hashes |
+| Knowledge Review | Full persisted review output and replay identifiers |
+| Knowledge Module | ID, version, integrity hash, effective date, review date |
+| Engine input | Exact payload supplied to S.P.A.T.I.A.L. |
+| Derivation | Adapter version and field-basis explanations |
+| Provenance | IDs, revisions, hashes, engine version, adapter version, input hash |
+| Decision | Recommendation, score, confidence, risk, gates, assumptions, explanation, trace |
+
+Execution timestamp and assessment ID are stored outside deterministic replay
+material. Identical persisted inputs, review, engine version, and adapter
+version therefore produce identical results and replay hashes.
+
+## Replay
+
+Replay reads the immutable snapshot rather than current mutable records,
+re-executes the installed engine, reconstructs the operational result, and
+compares canonical structured output plus SHA-256 hash. It records an
+`assessment.replayed` audit event. It creates no new evidence, review, or
+assessment and does not advance lifecycle state.
+
+The replay hash supports integrity comparison. It does not establish source
+truth, independent verification, digital-signature identity, cryptographic
+immutability, or tamper-evident persistence.
+
+## Continuation validity
+
+An operational assessment remains lifecycle-eligible only while:
 
 | Condition | Stale when |
 |---|---|
 | Opportunity | Archived or revision differs |
-| Evidence | Current active evidence trace differs by ID, revision, file hash, status, or confidence |
+| Evidence | Active trace differs by ID, revision, file hash, status, or confidence |
+| Review | Missing, incomplete, superseded, stale, revised, or output hash differs |
 | Module | Missing, inactive, version differs, or integrity hash differs |
-| Review | Not `Completed` or already superseded |
+| Engine | Installed version differs |
+| Adapter | Installed version differs |
 
-Stale records remain visible and traceable but cannot complete Knowledge Module
-Review. The first detection is audited once. Rerun is the recovery mechanism.
-This enforces a narrow continuation-validity rule: the review does not outlive
-the persisted conditions that justified it.
-
-## Additive schema initialization
-
-Repository startup creates `knowledge_reviews` and its opportunity/date index
-with `CREATE TABLE IF NOT EXISTS`. The existing Sprint 2 evidence-column checks
-remain. No existing table is dropped or rewritten. The migration is idempotent,
-but rollback still requires the pre-installation database backup because Sprint
-2 code does not understand Sprint 3 review records.
+Stale `AS-*` records remain visible. First detection is audited once. A new
+Knowledge Review and assessment are the recovery path; prior artifacts are not
+overwritten.
 
 ## Lifecycle derivation
 
-The opportunity service derives workflow state on every read:
+The opportunity service derives state from persisted records on every read:
 
-- Attach Evidence: complete when at least one non-archived evidence row exists.
-- Knowledge Module Review: complete when at least one current, active,
-  lifecycle-eligible completed review exists.
-- S.P.A.T.I.A.L., dossier, and archive: unchanged and pending unless their
-  existing services change them outside Sprint 3.
+- Attach Evidence: at least one active evidence row;
+- Knowledge Module Review: at least one current completed review;
+- Run S.P.A.T.I.A.L.: at least one current lifecycle-eligible operational
+  assessment; and
+- Executive Dossier and Archive Results: pending in Sprint 4.
 
-There is no OI-000001 special case. Reference seeding calls the same review
-service used by future opportunities.
+There is no OI-000001 lifecycle special case. Reference seeding uses the same
+services and produces the provenance chain `OI-000001 → EV-000001 → KR-000001
+→ AS-000001`.
+
+## Additive schema migration
+
+Repository initialization retains the existing `assessments` table and adds
+missing columns with idempotent `ALTER TABLE` statements:
+
+```text
+assessment_kind, knowledge_review_id, engine_version, adapter_version,
+replay_hash, provenance_json, revision, updated_at
+```
+
+Existing rows receive safe defaults and remain readable as `legacy`. No table
+or row is dropped. The migration is forward-safe but not a substitute for a
+rollback backup because Sprint 3 source does not understand Sprint 4 columns.
 
 ## Security boundary
 
-SHA-256 supports integrity comparison, replay identity, and module-change
-detection. It does not establish source truth, legal authenticity, independent
-verification, or immutable storage. The SQLite audit log is an application
-record and is not tamper-evident. Production identity, authorization, isolation,
-encryption, gateway, and availability controls remain outside this reference
-build.
+The SQLite audit log is an application record and is not tamper-evident. The
+reference server is loopback-bound and lacks production identity, authorization,
+isolation, encryption, gateway, availability, and load controls. No result
+should be treated as independently verified or as professional advice.

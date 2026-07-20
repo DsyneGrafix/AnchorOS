@@ -1,7 +1,7 @@
 {
   "service_id": "AOS-SVC-ANCHORINTEL-API",
   "name": "AnchorIntel API",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "platform": "AnchorOS",
   "framework": "AnchorIntel",
   "entrypoint": "anchorintel_api.anchoros:AnchorIntelAnchorOSService",
@@ -19,6 +19,9 @@
     "knowledge.review.supersede",
     "knowledge.review.staleness",
     "spatial.assessment.run",
+    "spatial.assessment.replay",
+    "spatial.assessment.trace",
+    "spatial.assessment.staleness",
     "assessment.report.json",
     "assessment.report.markdown",
     "opportunity.review.due",

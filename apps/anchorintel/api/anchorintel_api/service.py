@@ -13,6 +13,12 @@ from typing import Any
 from spatial_engine.engine import InputError, SpatialEngine
 from spatial_engine.report import render_markdown
 
+from .assessment import (
+    ADAPTER_VERSION,
+    ENGINE_VERSION,
+    build_engine_input,
+    build_operational_result,
+)
 from .errors import ApiError
 from .knowledge import KnowledgeModuleRegistry, execute_module, sha256_json
 from .repository import Repository
@@ -143,6 +149,15 @@ class AnchorIntelService:
         current_review = next(
             (item for item in knowledge_reviews if item["lifecycle_eligible"]), None
         )
+        assessments = [
+            self._annotate_operational_assessment(item)
+            for item in self.repository.list_assessments(
+                opportunity_id, assessment_kind="spatial_lifecycle"
+            )
+        ]
+        current_assessment = next(
+            (item for item in assessments if item["lifecycle_eligible"]), None
+        )
         workflow = record.get("workflow")
         if isinstance(workflow, list):
             record["workflow"] = [
@@ -156,12 +171,19 @@ class AnchorIntelService:
                     "state": "complete" if current_review else "pending",
                 }
                 if step.get("key") == "knowledge"
+                else {
+                    **step,
+                    "state": "complete" if current_assessment else "pending",
+                }
+                if step.get("key") == "assessment"
                 else dict(step)
                 for step in workflow
             ]
         record["active_evidence_count"] = len(active_evidence)
         record["knowledge_review_count"] = len(knowledge_reviews)
         record["current_knowledge_review"] = current_review
+        record["assessment_count"] = len(assessments)
+        record["current_assessment"] = current_assessment
         return record
 
     def list_opportunities(self, include_archived: bool = False) -> list[dict[str, Any]]:
@@ -745,6 +767,381 @@ class AnchorIntelService:
         return self.repository.update_evidence(
             evidence_id, merged, actor, "evidence.promoted", expected_revision
         )
+
+    @staticmethod
+    def _assessment_review_snapshot(review: dict[str, Any]) -> dict[str, Any]:
+        return {
+            key: value
+            for key, value in review.items()
+            if key not in {"stale", "stale_reasons", "lifecycle_eligible", "summary"}
+        }
+
+    def assessment_readiness(
+        self, opportunity_id: str, review_id: str | None = None
+    ) -> dict[str, Any]:
+        """Return bounded readiness without persisting or advancing lifecycle state."""
+
+        opportunity = self.repository.get_opportunity(
+            opportunity_id, include_archived=True
+        )
+        errors: list[str] = []
+        warnings: list[str] = []
+        if opportunity.get("archived"):
+            errors.append("The opportunity is archived.")
+        active_evidence = self.repository.list_evidence(opportunity_id)
+        if not active_evidence:
+            errors.append("At least one active evidence record is required.")
+
+        selected_review: dict[str, Any] | None = None
+        if review_id:
+            selected_review = self.get_knowledge_review(opportunity_id, review_id)
+        else:
+            reviews = self.list_knowledge_reviews(opportunity_id)
+            selected_review = next(
+                (item for item in reviews if item["lifecycle_eligible"]), None
+            )
+            if selected_review is None:
+                selected_review = next(
+                    (
+                        item
+                        for item in reviews
+                        if item.get("review_status") not in {"Superseded", "Archived"}
+                    ),
+                    None,
+                )
+        if selected_review is None:
+            errors.append("A completed current Knowledge Review is required.")
+        else:
+            if selected_review.get("review_status") != "Completed":
+                errors.append("The selected Knowledge Review is not completed.")
+            if selected_review.get("stale"):
+                errors.extend(selected_review.get("stale_reasons", []))
+
+        derivation: dict[str, Any] | None = None
+        input_hash = ""
+        if selected_review is not None and active_evidence:
+            try:
+                module = self.module_registry.get(selected_review["module_id"])
+                payload, derivation = build_engine_input(
+                    opportunity, active_evidence, selected_review, module
+                )
+                input_hash = sha256_json(payload)
+                self.engine.analyze(payload)
+            except (ApiError, InputError) as exc:
+                if isinstance(exc, ApiError):
+                    errors.append(exc.message)
+                else:
+                    errors.append(
+                        "The derived inputs do not satisfy the S.P.A.T.I.A.L. engine contract: "
+                        + str(exc)
+                    )
+            else:
+                output = selected_review.get("output", {})
+                if output.get("unknowns"):
+                    warnings.append(
+                        f"The current Knowledge Review contains {len(output['unknowns'])} material unknown(s)."
+                    )
+                if output.get("missing_evidence"):
+                    warnings.append(
+                        f"The current Knowledge Review identifies {len(output['missing_evidence'])} missing-evidence item(s)."
+                    )
+                warnings.append(
+                    "Conservative adapter defaults are used for engine dimensions not covered by the current Knowledge Module."
+                )
+        return {
+            "opportunity_id": opportunity_id,
+            "ready": not errors,
+            "errors": errors,
+            "warnings": warnings,
+            "knowledge_review": selected_review,
+            "engine_version": ENGINE_VERSION,
+            "adapter_version": ADAPTER_VERSION,
+            "input_hash": input_hash,
+            "derivation": derivation,
+            "bounded_execution_notice": (
+                "This run uses only persisted local records. It does not browse the internet, "
+                "invoke an external AI model, create new evidence, or independently verify evidence."
+            ),
+        }
+
+    def run_spatial_assessment(
+        self,
+        opportunity_id: str,
+        actor: str,
+        review_id: str | None = None,
+        reason: str = "S.P.A.T.I.A.L. assessment requested",
+    ) -> dict[str, Any]:
+        readiness = self.assessment_readiness(opportunity_id, review_id)
+        review = readiness.get("knowledge_review")
+        if review is not None and (
+            review.get("stale")
+            or review.get("review_status") in {"Superseded", "Archived"}
+        ):
+            reasons = list(review.get("stale_reasons", []))
+            if review.get("review_status") in {"Superseded", "Archived"}:
+                reasons.append("The selected Knowledge Review is no longer active.")
+            raise ApiError(
+                409,
+                "knowledge_review_stale",
+                "The selected Knowledge Review is stale; rerun it before assessment",
+                {"reasons": reasons},
+            )
+        if review is not None and review.get("review_status") != "Completed":
+            raise ApiError(
+                409,
+                "knowledge_review_incomplete",
+                "The selected Knowledge Review must be completed before assessment",
+            )
+        if not readiness["ready"]:
+            raise ApiError(
+                409,
+                "assessment_not_ready",
+                "The persisted lifecycle inputs are not ready for S.P.A.T.I.A.L. assessment",
+                {"reasons": readiness["errors"]},
+            )
+        assert review is not None
+        opportunity = self.repository.get_opportunity(opportunity_id)
+        evidence = self.repository.list_evidence(opportunity_id)
+        module = self.module_registry.get(review["module_id"])
+        engine_input, derivation = build_engine_input(
+            opportunity, evidence, review, module
+        )
+        evidence_trace = self._evidence_trace(evidence)
+        try:
+            result_obj = self.engine.analyze(engine_input)
+        except InputError as exc:
+            raise ApiError(
+                422,
+                "assessment_input_incomplete",
+                "The replayable inputs do not satisfy the S.P.A.T.I.A.L. engine contract",
+                {"engine_error": str(exc)},
+            ) from exc
+        operational_result = build_operational_result(
+            result_obj.to_dict(), review, evidence_trace, derivation
+        )
+        review_snapshot = self._assessment_review_snapshot(review)
+        evidence_snapshot = [
+            {**clean_system_fields(item), "revision": item["revision"]}
+            for item in sorted(evidence, key=lambda value: value["evidence_id"])
+        ]
+        opportunity_snapshot = {
+            **clean_system_fields(opportunity),
+            "revision": opportunity["revision"],
+        }
+        module_snapshot = {
+            "module_id": module["module_id"],
+            "version": module["version"],
+            "integrity_hash": module["integrity_hash"],
+            "effective_date": module["effective_date"],
+            "review_date": module["review_date"],
+        }
+        provenance = {
+            "contract_version": "anchorintel-assessment-provenance/1.0",
+            "opportunity": {
+                "opportunity_id": opportunity_id,
+                "revision": opportunity["revision"],
+            },
+            "evidence_trace": evidence_trace,
+            "knowledge_review": {
+                "review_id": review["review_id"],
+                "revision": review["revision"],
+                "output_hash": review.get("output_hash", ""),
+                "module_id": review["module_id"],
+                "module_version": review["module_version"],
+                "module_integrity_hash": review.get("module_integrity_hash", ""),
+            },
+            "engine": {
+                "name": "S.P.A.T.I.A.L.",
+                "version": ENGINE_VERSION,
+            },
+            "adapter": {
+                "name": "AnchorIntel S.P.A.T.I.A.L. adapter",
+                "version": ADAPTER_VERSION,
+            },
+            "engine_input_hash": sha256_json(engine_input),
+        }
+        replay_hash = sha256_json(
+            {"provenance": provenance, "result": operational_result}
+        )
+        operational_result["replay_hash"] = replay_hash
+        input_snapshot = {
+            "contract_version": "anchorintel-assessment-snapshot/1.0",
+            "opportunity": opportunity_snapshot,
+            "active_evidence": evidence_snapshot,
+            "knowledge_review": review_snapshot,
+            "knowledge_module": module_snapshot,
+            "engine_input": engine_input,
+            "input_derivation": derivation,
+        }
+        current = next(
+            (
+                item
+                for item in self.list_operational_assessments(opportunity_id)
+                if item.get("lifecycle_eligible")
+            ),
+            None,
+        )
+        result = self.repository.create_assessment(
+            opportunity_id,
+            input_snapshot,
+            operational_result,
+            render_markdown(result_obj),
+            actor,
+            "spatial_completed",
+            reason,
+            current["assessment_id"] if current else None,
+            assessment_kind="spatial_lifecycle",
+            knowledge_review_id=review["review_id"],
+            engine_version=ENGINE_VERSION,
+            adapter_version=ADAPTER_VERSION,
+            replay_hash=replay_hash,
+            provenance=provenance,
+        )
+        return self._annotate_operational_assessment(result)
+
+    def _annotate_operational_assessment(
+        self, record: dict[str, Any]
+    ) -> dict[str, Any]:
+        assessment = dict(record)
+        if assessment.get("assessment_kind") != "spatial_lifecycle":
+            assessment["stale"] = False
+            assessment["stale_reasons"] = []
+            assessment["lifecycle_eligible"] = False
+            return assessment
+        reasons: list[str] = []
+        provenance = assessment.get("provenance", {})
+        try:
+            opportunity = self.repository.get_opportunity(
+                assessment["opportunity_id"], include_archived=True
+            )
+        except ApiError:
+            reasons.append("The opportunity is no longer available.")
+            opportunity = None
+        if opportunity is not None:
+            if opportunity.get("archived"):
+                reasons.append("The opportunity is archived.")
+            if opportunity.get("revision") != provenance.get("opportunity", {}).get(
+                "revision"
+            ):
+                reasons.append("The opportunity revision has changed.")
+            current_trace = self._evidence_trace(
+                self.repository.list_evidence(assessment["opportunity_id"])
+            )
+            if current_trace != provenance.get("evidence_trace", []):
+                reasons.append("The active evidence trace has changed.")
+        try:
+            review = self.get_knowledge_review(
+                assessment["opportunity_id"], assessment["knowledge_review_id"]
+            )
+        except ApiError:
+            reasons.append("The source Knowledge Review is unavailable.")
+            review = None
+        if review is not None:
+            expected_review = provenance.get("knowledge_review", {})
+            if not review.get("lifecycle_eligible"):
+                reasons.append("The source Knowledge Review is no longer current.")
+            if review.get("revision") != expected_review.get("revision"):
+                reasons.append("The source Knowledge Review revision has changed.")
+            if review.get("output_hash") != expected_review.get("output_hash"):
+                reasons.append("The source Knowledge Review output hash has changed.")
+        if assessment.get("engine_version") != ENGINE_VERSION:
+            reasons.append("The S.P.A.T.I.A.L. engine version has changed.")
+        if assessment.get("adapter_version") != ADAPTER_VERSION:
+            reasons.append("The AnchorIntel assessment adapter version has changed.")
+        successor_id = self.repository.assessment_successor_id(
+            assessment["assessment_id"]
+        )
+        if successor_id:
+            reasons.append(f"A newer assessment ({successor_id}) supersedes this result.")
+        assessment["stale"] = bool(reasons)
+        assessment["stale_reasons"] = list(dict.fromkeys(reasons))
+        assessment["lifecycle_eligible"] = not reasons
+        if reasons:
+            self.repository.record_assessment_stale(
+                assessment, assessment["stale_reasons"]
+            )
+        return assessment
+
+    def list_operational_assessments(
+        self, opportunity_id: str
+    ) -> list[dict[str, Any]]:
+        return [
+            self._annotate_operational_assessment(item)
+            for item in self.repository.list_assessments(
+                opportunity_id, assessment_kind="spatial_lifecycle"
+            )
+        ]
+
+    def get_operational_assessment(
+        self, opportunity_id: str, assessment_id: str
+    ) -> dict[str, Any]:
+        assessment = self.repository.get_assessment(
+            assessment_id, include_report=False
+        )
+        if (
+            assessment["opportunity_id"] != opportunity_id
+            or assessment.get("assessment_kind") != "spatial_lifecycle"
+        ):
+            raise ApiError(
+                404,
+                "assessment_not_found",
+                f"Assessment {assessment_id} was not found for {opportunity_id}",
+            )
+        return self._annotate_operational_assessment(assessment)
+
+    def replay_operational_assessment(
+        self, opportunity_id: str, assessment_id: str, actor: str
+    ) -> dict[str, Any]:
+        assessment = self.repository.get_assessment(
+            assessment_id, include_report=False, include_snapshot=True
+        )
+        if (
+            assessment["opportunity_id"] != opportunity_id
+            or assessment.get("assessment_kind") != "spatial_lifecycle"
+        ):
+            raise ApiError(
+                404,
+                "assessment_not_found",
+                f"Assessment {assessment_id} was not found for {opportunity_id}",
+            )
+        snapshot = assessment["input_snapshot"]
+        try:
+            result_obj = self.engine.analyze(snapshot["engine_input"])
+        except (InputError, KeyError) as exc:
+            raise ApiError(
+                409,
+                "assessment_replay_failed",
+                "The stored assessment snapshot cannot be replayed",
+                {"reason": str(exc)},
+            ) from exc
+        recomputed = build_operational_result(
+            result_obj.to_dict(),
+            snapshot["knowledge_review"],
+            assessment.get("provenance", {}).get("evidence_trace", []),
+            snapshot["input_derivation"],
+        )
+        recomputed_hash = sha256_json(
+            {"provenance": assessment["provenance"], "result": recomputed}
+        )
+        stored_without_hash = dict(assessment["result"])
+        stored_without_hash.pop("replay_hash", None)
+        replay = {
+            "assessment_id": assessment_id,
+            "opportunity_id": opportunity_id,
+            "match": (
+                recomputed_hash == assessment.get("replay_hash")
+                and recomputed == stored_without_hash
+            ),
+            "stored_replay_hash": assessment.get("replay_hash"),
+            "recomputed_replay_hash": recomputed_hash,
+            "engine_version": ENGINE_VERSION,
+            "stored_engine_version": assessment.get("engine_version"),
+            "adapter_version": ADAPTER_VERSION,
+            "stored_adapter_version": assessment.get("adapter_version"),
+            "result": recomputed,
+        }
+        self.repository.record_assessment_replayed(assessment, actor, replay)
+        return replay
 
     def run_assessment(
         self,

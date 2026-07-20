@@ -123,6 +123,7 @@ def opportunity_detail(
     notice: str = "",
     knowledge_reviews: Iterable[dict[str, Any]] = (),
     knowledge_modules: Iterable[dict[str, Any]] = (),
+    assessments: Iterable[dict[str, Any]] = (),
 ) -> str:
     archived = bool(record.get("archived"))
     evidence_items = list(evidence_records)
@@ -174,6 +175,17 @@ def opportunity_detail(
     run_review = ""
     if not archived and module_options:
         run_review = f'<a class="button" href="/opportunities/{quote(str(record["opportunity_id"]))}/knowledge-reviews/new">Run Knowledge Review</a>'
+    assessment_items = list(assessments)
+    assessment_rows = "".join(
+        f"""<tr><td><a class="record-title" href="/opportunities/{quote(str(record['opportunity_id']))}/assessments/{quote(str(item['assessment_id']))}">{_text(item.get('assessment_id'))}</a></td>
+        <td><span class="badge{' archived' if item.get('stale') else ''}">{'Stale' if item.get('stale') else _text(item.get('recommendation'))}</span></td>
+        <td>{_text(item.get('score'))}/100</td><td>{_text(item.get('evidence_confidence'))}</td><td>{_text(item.get('result', {}).get('risk_profile', {}).get('level'))}</td>
+        <td>{_text(item.get('knowledge_review_id'))}</td><td class="meta">{_text(item.get('execution_timestamp'))}</td><td><a href="/opportunities/{quote(str(record['opportunity_id']))}/assessments/{quote(str(item['assessment_id']))}">View</a></td></tr>"""
+        for item in assessment_items
+    ) or '<tr><td class="empty" colspan="8">No operational assessment has been run.</td></tr>'
+    run_assessment = ""
+    if not archived and record.get("current_knowledge_review"):
+        run_assessment = f'<a class="button" href="/opportunities/{quote(str(record["opportunity_id"]))}/assessments/new">Run S.P.A.T.I.A.L.</a>'
     return _layout(
         str(record.get("title", "Opportunity")),
         f"""<div class="eyebrow">{_text(record.get('opportunity_id'))} · {'Reference opportunity' if record.get('reference_record') else 'Opportunity record'}</div>
@@ -205,6 +217,10 @@ def opportunity_detail(
           <div class="section-head"><div><h2>Knowledge Module Review</h2><div class="meta">{len(review_items)} persisted review{'s' if len(review_items) != 1 else ''}; stale results never complete the lifecycle.</div></div><a class="button secondary" href="/knowledge-modules">Module library</a></div>
           {run_review}
           <table style="margin-top:16px"><thead><tr><th>ID</th><th>Module</th><th>Status</th><th>Confidence</th><th>Output</th><th>Created</th><th></th></tr></thead><tbody>{review_rows}</tbody></table>
+        </section>
+        <section class="card table-wrap" style="margin-top:22px">
+          <div class="section-head"><div><h2>S.P.A.T.I.A.L. Assessments</h2><div class="meta">{len(assessment_items)} persisted assessment{'s' if len(assessment_items) != 1 else ''}; stale results do not complete the lifecycle.</div></div>{run_assessment}</div>
+          <table><thead><tr><th>ID</th><th>Recommendation</th><th>Score</th><th>Confidence</th><th>Risk</th><th>Review</th><th>Executed</th><th></th></tr></thead><tbody>{assessment_rows}</tbody></table>
         </section>""",
     )
 
@@ -446,6 +462,97 @@ def knowledge_review_detail(
         <div class="notice"><strong>Reference evidence notice:</strong> {_text(output.get('reference_evidence_notice'))}</div>
         <div class="notice"><strong>Bounded output:</strong> {_text(output.get('disclaimer'))}<br>{_text(' '.join(output.get('limitations', [])))}</div></section>""",
     )
+
+
+def spatial_assessment_form(
+    opportunity: dict[str, Any], readiness: dict[str, Any]
+) -> str:
+    opportunity_id = str(opportunity["opportunity_id"])
+    review = readiness.get("knowledge_review") or {}
+    warnings = "".join(f"<li>{_text(item)}</li>" for item in readiness.get("warnings", []))
+    errors = "".join(f"<li>{_text(item)}</li>" for item in readiness.get("errors", []))
+    readiness_panel = (
+        '<div class="notice"><strong>Ready.</strong> The current persisted inputs satisfy the execution contract.</div>'
+        if readiness.get("ready")
+        else f'<div class="notice"><strong>Not ready.</strong><ul>{errors}</ul></div>'
+    )
+    run_button = (
+        f'<button type="submit">Run S.P.A.T.I.A.L.</button><input type="hidden" name="knowledge_review_id" value="{_text(review.get("review_id"), "")}">'
+        if readiness.get("ready")
+        else '<button type="button" disabled>Run unavailable</button>'
+    )
+    return _layout(
+        "Run S.P.A.T.I.A.L.",
+        f"""<div class="eyebrow">{_text(opportunity_id)} · Assessment Service</div><h1>Run S.P.A.T.I.A.L.</h1>
+        <p class="lede">Execute the installed engine against one immutable snapshot of the current opportunity revision, active evidence trace, and completed Knowledge Review.</p>
+        {readiness_panel}
+        <div class="grid"><section class="card"><h2>Execution inputs</h2><dl class="facts">
+        <div><dt>Knowledge Review</dt><dd>{_text(review.get('review_id'))}</dd></div><div><dt>Review status</dt><dd>{_text(review.get('review_status'))}</dd></div>
+        <div><dt>Module</dt><dd>{_text(review.get('module_id'))} v{_text(review.get('module_version'))}</dd></div><div><dt>Review confidence</dt><dd>{_text(review.get('confidence'))}</dd></div>
+        <div><dt>Engine</dt><dd>S.P.A.T.I.A.L. v{_text(readiness.get('engine_version'))}</dd></div><div><dt>Adapter</dt><dd>v{_text(readiness.get('adapter_version'))}</dd></div>
+        </dl><h2 style="margin-top:24px">Input hash</h2><p class="hash">{_text(readiness.get('input_hash'))}</p></section>
+        <aside class="card"><h2>Readiness warnings</h2><ul>{warnings or '<li class="meta">No warnings recorded.</li>'}</ul></aside></div>
+        <div class="notice">{_text(readiness.get('bounded_execution_notice'))}</div>
+        <form method="post" action="/opportunities/{quote(opportunity_id)}/assessments"><div class="toolbar">{run_button}<a class="button secondary" href="/opportunities/{quote(opportunity_id)}">Cancel</a></div></form>""",
+    )
+
+
+def spatial_assessment_detail(
+    opportunity: dict[str, Any], assessment: dict[str, Any], notice: str = ""
+) -> str:
+    opportunity_id = str(opportunity["opportunity_id"])
+    assessment_id = str(assessment["assessment_id"])
+    result = assessment.get("result", {})
+    risk = result.get("risk_profile", {})
+    gate_rows = "".join(
+        f"<tr><td>{_text(key)}</td><td><span class=\"badge{' archived' if value.get('status') == 'fail' else ''}\">{_text(value.get('status'))}</span></td><td>{_text(value.get('rationale'))}</td><td>{_text(', '.join(value.get('evidence_refs', [])))}</td></tr>"
+        for key, value in result.get("gates", {}).items()
+    )
+    trace_rows = "".join(
+        f"<tr><td>{_text(item.get('evidence_id'))}</td><td>{_text(item.get('revision'))}</td><td>{_text(item.get('evidence_status'))}</td><td>{_text(item.get('evidence_confidence'))}</td><td class=\"hash\">{_text(item.get('sha256'))}</td></tr>"
+        for item in result.get("evidence_trace", [])
+    ) or '<tr><td class="empty" colspan="5">No evidence trace was stored.</td></tr>'
+    engine_assumptions = [
+        item.get("claim", "") if isinstance(item, dict) else item
+        for item in result.get("assumptions", [])
+    ]
+    knowledge_assumptions = [
+        item.get("statement", "") if isinstance(item, dict) else item
+        for item in result.get("knowledge_assumptions", [])
+    ]
+    stale = bool(assessment.get("stale"))
+    stale_panel = (
+        _review_section(
+            "Staleness", assessment.get("stale_reasons", []), "Current"
+        )
+        if stale
+        else '<div class="notice"><strong>Current assessment.</strong> Opportunity revision, evidence trace, Knowledge Review, adapter, and engine still match.</div>'
+    )
+    notice_html = f'<div class="notice">{escape(notice)}</div>' if notice else ""
+    return _layout(
+        assessment_id,
+        f"""<div class="eyebrow">{_text(assessment_id)} · S.P.A.T.I.A.L. Assessment</div><h1>{_text(result.get('recommendation'))}</h1>
+        <p class="lede">Operational decision output for <a href="/opportunities/{quote(opportunity_id)}">{_text(opportunity.get('title'))}</a>.</p>
+        <div class="toolbar"><a class="button secondary" href="/opportunities/{quote(opportunity_id)}">← Opportunity</a>
+        <form method="post" action="/opportunities/{quote(opportunity_id)}/assessments/{quote(assessment_id)}/replay"><button type="submit">Replay stored snapshot</button></form>
+        <span class="badge{' archived' if stale else ''}">{'Stale' if stale else 'Current'}</span></div>{notice_html}{stale_panel}
+        <div class="grid"><section class="card"><h2>Decision</h2><dl class="facts">
+        <div><dt>Recommendation</dt><dd>{_text(result.get('recommendation'))}</dd></div><div><dt>Score</dt><dd>{_text(result.get('score'))}/100</dd></div>
+        <div><dt>Confidence</dt><dd>{_text(result.get('confidence'))}</dd></div><div><dt>Risk profile</dt><dd>{_text(risk.get('level'))}</dd></div>
+        <div><dt>Knowledge Review</dt><dd><a href="/opportunities/{quote(opportunity_id)}/knowledge-reviews/{quote(str(assessment.get('knowledge_review_id', '')))}">{_text(assessment.get('knowledge_review_id'))}</a></dd></div>
+        <div><dt>Executed</dt><dd>{_text(assessment.get('execution_timestamp'))}</dd></div></dl>
+        <h2 style="margin-top:24px">Engine explanation</h2><p>{_text(result.get('explanation', {}).get('engine'))}</p></section>
+        <aside class="card"><h2>Execution identity</h2><dl class="facts"><div><dt>Engine</dt><dd>v{_text(assessment.get('engine_version'))}</dd></div><div><dt>Adapter</dt><dd>v{_text(assessment.get('adapter_version'))}</dd></div>
+        <div><dt>Revision</dt><dd>{_text(assessment.get('revision'))}</dd></div><div><dt>Assessment date</dt><dd>{_text(result.get('assessment_date'))}</dd></div></dl>
+        <h2 style="margin-top:24px">Replay hash</h2><p class="hash">{_text(assessment.get('replay_hash'))}</p></aside></div>
+        <section class="card" style="margin-top:22px"><h2>Gate results</h2><div class="table-wrap"><table><thead><tr><th>Gate</th><th>Status</th><th>Rationale</th><th>Evidence</th></tr></thead><tbody>{gate_rows}</tbody></table></div>
+        {_review_section('Assumptions', engine_assumptions + knowledge_assumptions, 'None recorded')}
+        {_review_section('Warnings', result.get('warnings', []), 'None recorded')}
+        <h2 style="margin-top:24px">Evidence trace</h2><div class="table-wrap"><table><thead><tr><th>Evidence ID</th><th>Revision</th><th>Status</th><th>Confidence</th><th>SHA-256</th></tr></thead><tbody>{trace_rows}</tbody></table></div>
+        <div class="notice" style="margin-top:24px"><strong>Bounded execution:</strong> {_text(result.get('explanation', {}).get('input_derivation', {}).get('bounded_input_notice'))}</div></section>""",
+    )
+
+
 def error_page(status: int, message: str) -> str:
     return _layout(
         f"Error {status}",

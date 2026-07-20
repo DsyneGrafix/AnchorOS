@@ -94,9 +94,18 @@ class Repository:
                     score REAL NOT NULL,
                     evidence_confidence TEXT NOT NULL,
                     supersedes_assessment_id TEXT,
+                    assessment_kind TEXT NOT NULL DEFAULT 'legacy',
+                    knowledge_review_id TEXT,
+                    engine_version TEXT NOT NULL DEFAULT '',
+                    adapter_version TEXT NOT NULL DEFAULT '',
+                    replay_hash TEXT NOT NULL DEFAULT '',
+                    provenance_json TEXT NOT NULL DEFAULT '{}',
+                    revision INTEGER NOT NULL DEFAULT 1,
                     created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
                     FOREIGN KEY(opportunity_id) REFERENCES opportunities(opportunity_id),
-                    FOREIGN KEY(supersedes_assessment_id) REFERENCES assessments(assessment_id)
+                    FOREIGN KEY(supersedes_assessment_id) REFERENCES assessments(assessment_id),
+                    FOREIGN KEY(knowledge_review_id) REFERENCES knowledge_reviews(review_id)
                 );
 
                 CREATE INDEX IF NOT EXISTS assessments_opportunity_idx
@@ -158,6 +167,29 @@ class Repository:
             db.execute(
                 "CREATE INDEX IF NOT EXISTS evidence_active_opportunity_idx "
                 "ON evidence(opportunity_id, archived, created_at)"
+            )
+            assessment_columns = {
+                row["name"] for row in db.execute("PRAGMA table_info(assessments)").fetchall()
+            }
+            assessment_migrations = {
+                "assessment_kind": "TEXT NOT NULL DEFAULT 'legacy'",
+                "knowledge_review_id": "TEXT",
+                "engine_version": "TEXT NOT NULL DEFAULT ''",
+                "adapter_version": "TEXT NOT NULL DEFAULT ''",
+                "replay_hash": "TEXT NOT NULL DEFAULT ''",
+                "provenance_json": "TEXT NOT NULL DEFAULT '{}'",
+                "revision": "INTEGER NOT NULL DEFAULT 1",
+                "updated_at": "TEXT NOT NULL DEFAULT ''",
+            }
+            for column, definition in assessment_migrations.items():
+                if column not in assessment_columns:
+                    db.execute(f"ALTER TABLE assessments ADD COLUMN {column} {definition}")
+            db.execute(
+                "UPDATE assessments SET updated_at = created_at WHERE updated_at = ''"
+            )
+            db.execute(
+                "CREATE INDEX IF NOT EXISTS assessments_kind_opportunity_idx "
+                "ON assessments(opportunity_id, assessment_kind, created_at DESC)"
             )
 
     @staticmethod
@@ -240,6 +272,37 @@ class Repository:
             }
         )
         return record
+
+    @staticmethod
+    def _assessment_row(
+        row: sqlite3.Row,
+        include_report: bool = True,
+        include_snapshot: bool = False,
+    ) -> dict[str, Any]:
+        result = {
+            "assessment_id": row["assessment_id"],
+            "opportunity_id": row["opportunity_id"],
+            "assessment_kind": row["assessment_kind"],
+            "knowledge_review_id": row["knowledge_review_id"],
+            "engine_version": row["engine_version"],
+            "adapter_version": row["adapter_version"],
+            "replay_hash": row["replay_hash"],
+            "provenance": json.loads(row["provenance_json"]),
+            "result": json.loads(row["result_json"]),
+            "recommendation": row["recommendation"],
+            "score": row["score"],
+            "evidence_confidence": row["evidence_confidence"],
+            "supersedes_assessment_id": row["supersedes_assessment_id"],
+            "revision": row["revision"],
+            "execution_timestamp": row["created_at"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+        if include_report:
+            result["report_markdown"] = row["report_markdown"]
+        if include_snapshot:
+            result["input_snapshot"] = json.loads(row["input_snapshot_json"])
+        return result
 
     def create_opportunity(self, record: dict[str, Any], actor: str) -> dict[str, Any]:
         opportunity_id = record.get("opportunity_id") or new_id("OPP")
@@ -904,6 +967,21 @@ class Repository:
                 },
             )
 
+    @staticmethod
+    def _next_assessment_id(db: sqlite3.Connection) -> str:
+        rows = db.execute(
+            "SELECT assessment_id FROM assessments WHERE assessment_id GLOB 'AS-[0-9]*'"
+        ).fetchall()
+        used = {
+            int(row["assessment_id"][3:])
+            for row in rows
+            if row["assessment_id"][3:].isdigit()
+        }
+        number = 1
+        while number in used:
+            number += 1
+        return f"AS-{number:06d}"
+
     def create_assessment(
         self,
         opportunity_id: str,
@@ -914,18 +992,27 @@ class Repository:
         event_type: str,
         reason: str,
         supersedes_assessment_id: str | None = None,
+        *,
+        assessment_kind: str = "legacy",
+        knowledge_review_id: str | None = None,
+        engine_version: str = "",
+        adapter_version: str = "",
+        replay_hash: str = "",
+        provenance: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        assessment_id = new_id("ASM")
         now = utcnow()
         current = self.get_opportunity(opportunity_id)
         from_state = current["lifecycle_state"]
         to_state = result["recommendation"]
         event_id = new_id("LEV")
         with self.connect() as db:
+            assessment_id = self._next_assessment_id(db)
             db.execute(
                 "INSERT INTO assessments(assessment_id, opportunity_id, input_snapshot_json, "
                 "result_json, report_markdown, recommendation, score, evidence_confidence, "
-                "supersedes_assessment_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "supersedes_assessment_id, assessment_kind, knowledge_review_id, engine_version, "
+                "adapter_version, replay_hash, provenance_json, revision, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     assessment_id,
                     opportunity_id,
@@ -936,6 +1023,14 @@ class Repository:
                     result["score"],
                     result["confidence"],
                     supersedes_assessment_id,
+                    assessment_kind,
+                    knowledge_review_id,
+                    engine_version,
+                    adapter_version,
+                    replay_hash,
+                    json.dumps(provenance or {}),
+                    1,
+                    now,
                     now,
                 ),
             )
@@ -954,27 +1049,109 @@ class Repository:
                 f"assessment.{event_type}",
                 "assessment",
                 assessment_id,
-                {"opportunity_id": opportunity_id, "from_state": from_state, "to_state": to_state},
+                {
+                    "event_type": f"assessment.{event_type}",
+                    "opportunity_id": opportunity_id,
+                    "knowledge_review_id": knowledge_review_id,
+                    "engine_version": engine_version,
+                    "adapter_version": adapter_version,
+                    "replay_hash": replay_hash,
+                    "from_state": from_state,
+                    "to_state": to_state,
+                    "result_summary": {
+                        "recommendation": to_state,
+                        "score": result["score"],
+                        "confidence": result["confidence"],
+                    },
+                },
             )
         return self.get_assessment(assessment_id, include_report=False)
 
-    def get_assessment(self, assessment_id: str, include_report: bool = True) -> dict[str, Any]:
+    def get_assessment(
+        self,
+        assessment_id: str,
+        include_report: bool = True,
+        include_snapshot: bool = False,
+    ) -> dict[str, Any]:
         with self.connect() as db:
             row = db.execute(
                 "SELECT * FROM assessments WHERE assessment_id = ?", (assessment_id,)
             ).fetchone()
         if row is None:
             raise ApiError(404, "assessment_not_found", f"Assessment {assessment_id} was not found")
-        result = {
-            "assessment_id": row["assessment_id"],
-            "opportunity_id": row["opportunity_id"],
-            "result": json.loads(row["result_json"]),
-            "supersedes_assessment_id": row["supersedes_assessment_id"],
-            "created_at": row["created_at"],
-        }
-        if include_report:
-            result["report_markdown"] = row["report_markdown"]
-        return result
+        return self._assessment_row(row, include_report, include_snapshot)
+
+    def list_assessments(
+        self, opportunity_id: str, assessment_kind: str | None = None
+    ) -> list[dict[str, Any]]:
+        self.get_opportunity(opportunity_id, include_archived=True)
+        query = "SELECT * FROM assessments WHERE opportunity_id = ?"
+        params: list[Any] = [opportunity_id]
+        if assessment_kind:
+            query += " AND assessment_kind = ?"
+            params.append(assessment_kind)
+        query += " ORDER BY created_at DESC, assessment_id DESC"
+        with self.connect() as db:
+            rows = db.execute(query, tuple(params)).fetchall()
+        return [self._assessment_row(row, include_report=False) for row in rows]
+
+    def assessment_successor_id(self, assessment_id: str) -> str | None:
+        with self.connect() as db:
+            row = db.execute(
+                "SELECT assessment_id FROM assessments "
+                "WHERE supersedes_assessment_id = ? "
+                "ORDER BY created_at DESC, assessment_id DESC LIMIT 1",
+                (assessment_id,),
+            ).fetchone()
+        return str(row["assessment_id"]) if row else None
+
+    def record_assessment_replayed(
+        self, assessment: dict[str, Any], actor: str, replay: dict[str, Any]
+    ) -> None:
+        with self.connect() as db:
+            self._audit(
+                db,
+                actor,
+                "assessment.replayed",
+                "assessment",
+                assessment["assessment_id"],
+                {
+                    "event_type": "assessment.replayed",
+                    "opportunity_id": assessment["opportunity_id"],
+                    "knowledge_review_id": assessment.get("knowledge_review_id"),
+                    "engine_version": assessment.get("engine_version"),
+                    "adapter_version": assessment.get("adapter_version"),
+                    "stored_replay_hash": assessment.get("replay_hash"),
+                    "recomputed_replay_hash": replay.get("recomputed_replay_hash"),
+                    "match": replay.get("match"),
+                },
+            )
+
+    def record_assessment_stale(
+        self, assessment: dict[str, Any], reasons: list[str]
+    ) -> None:
+        with self.connect() as db:
+            existing = db.execute(
+                "SELECT 1 FROM audit_log WHERE action = 'assessment.stale' "
+                "AND entity_type = 'assessment' AND entity_id = ? LIMIT 1",
+                (assessment["assessment_id"],),
+            ).fetchone()
+            if existing is not None:
+                return
+            self._audit(
+                db,
+                "anchorintel-staleness-detector",
+                "assessment.stale",
+                "assessment",
+                assessment["assessment_id"],
+                {
+                    "event_type": "assessment.stale",
+                    "opportunity_id": assessment["opportunity_id"],
+                    "knowledge_review_id": assessment.get("knowledge_review_id"),
+                    "replay_hash": assessment.get("replay_hash"),
+                    "reasons": reasons,
+                },
+            )
 
     def latest_assessment(self, opportunity_id: str) -> dict[str, Any] | None:
         with self.connect() as db:

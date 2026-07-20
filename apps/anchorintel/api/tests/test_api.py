@@ -159,7 +159,7 @@ class ApiTestCase(unittest.TestCase):
         status, health, _ = self.request("GET", "/health")
         self.assertEqual(status, 200)
         self.assertEqual(health["status"], "ok")
-        self.assertEqual(health["version"], "0.3.0")
+        self.assertEqual(health["version"], "0.4.0")
         status, contract, _ = self.request("GET", "/v1/openapi.json")
         self.assertEqual(status, 200)
         self.assertIn("/opportunities/{opportunity_id}/evidence", contract["paths"])
@@ -170,6 +170,13 @@ class ApiTestCase(unittest.TestCase):
         self.assertIn("/knowledge-modules", contract["paths"])
         self.assertIn(
             "/opportunities/{opportunity_id}/knowledge-reviews", contract["paths"]
+        )
+        self.assertIn(
+            "/opportunities/{opportunity_id}/assessments", contract["paths"]
+        )
+        self.assertIn(
+            "/opportunities/{opportunity_id}/assessments/{assessment_id}/replay",
+            contract["paths"],
         )
         self.assertIn("/v1/assessments/run", contract["paths"])
         self.assertIn("/v1/lifecycle/revalidate", contract["paths"])
@@ -250,11 +257,16 @@ class ApiTestCase(unittest.TestCase):
             "not an official Florida Power & Light record",
             first["knowledge_review"]["output"]["reference_evidence_notice"],
         )
+        self.assertTrue(first["assessment_created"])
+        self.assertEqual(first["assessment"]["assessment_id"], "AS-000001")
+        self.assertEqual(first["assessment"]["knowledge_review_id"], "KR-000001")
+        self.assertTrue(first["assessment"]["replay_hash"])
 
         second = ensure_reference_records(self.service)
         self.assertFalse(second["opportunity_created"])
         self.assertFalse(second["evidence_created"])
         self.assertFalse(second["knowledge_review_created"])
+        self.assertFalse(second["assessment_created"])
         self.assertEqual(second["evidence"]["revision"], 1)
         opportunity = self.service.get_opportunity("OI-000001")
         evidence_step = next(
@@ -265,6 +277,168 @@ class ApiTestCase(unittest.TestCase):
             step for step in opportunity["workflow"] if step["key"] == "knowledge"
         )
         self.assertEqual(knowledge_step["state"], "complete")
+        assessment_step = next(
+            step for step in opportunity["workflow"] if step["key"] == "assessment"
+        )
+        self.assertEqual(assessment_step["state"], "complete")
+        dossier_step = next(
+            step for step in opportunity["workflow"] if step["key"] == "dossier"
+        )
+        self.assertEqual(dossier_step["state"], "pending")
+
+    def test_spatial_assessment_run_detail_replay_and_lifecycle(self):
+        references = ensure_reference_records(self.service)
+        assessment = references["assessment"]
+        self.assertEqual(assessment["assessment_id"], "AS-000001")
+        self.assertEqual(assessment["assessment_kind"], "spatial_lifecycle")
+        self.assertEqual(assessment["result"]["recommendation"], "Hold")
+        self.assertEqual(assessment["result"]["score"], 33.2)
+        self.assertEqual(assessment["result"]["risk_profile"]["level"], "High")
+        self.assertEqual(assessment["engine_version"], "0.1.0")
+        self.assertEqual(assessment["adapter_version"], "1.0.0")
+
+        status, run_page, _ = self.request(
+            "GET",
+            "/opportunities/OI-000001/assessments/new",
+            headers={"Accept": "text/html"},
+        )
+        self.assertEqual(status, 200)
+        self.assertIn("Run S.P.A.T.I.A.L.", run_page)
+        self.assertIn("persisted local records", run_page)
+        self.assertIn("KR-000001", run_page)
+
+        status, detail, _ = self.request(
+            "GET", "/opportunities/OI-000001/assessments/AS-000001"
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(detail["knowledge_review_id"], "KR-000001")
+        self.assertEqual(detail["result"]["evidence_trace"][0]["evidence_id"], "EV-000001")
+
+        status, detail_page, _ = self.request(
+            "GET",
+            "/opportunities/OI-000001/assessments/AS-000001",
+            headers={"Accept": "text/html"},
+        )
+        self.assertEqual(status, 200)
+        self.assertIn("Engine explanation", detail_page)
+        self.assertIn("Replay hash", detail_page)
+        self.assertIn("Evidence trace", detail_page)
+
+        status, replay, _ = self.request(
+            "POST", "/opportunities/OI-000001/assessments/AS-000001/replay", {}
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(replay["match"])
+        self.assertEqual(
+            replay["stored_replay_hash"], replay["recomputed_replay_hash"]
+        )
+        actions = [item["action"] for item in self.repository.list_audit(50)]
+        self.assertIn("assessment.spatial_completed", actions)
+        self.assertIn("assessment.replayed", actions)
+
+    def test_spatial_assessment_is_deterministic_for_identical_inputs(self):
+        references = ensure_reference_records(self.service)
+        first = references["assessment"]
+        second = self.service.run_spatial_assessment(
+            "OI-000001", "determinism-test", "KR-000001"
+        )
+        self.assertEqual(second["assessment_id"], "AS-000002")
+        self.assertEqual(second["supersedes_assessment_id"], "AS-000001")
+        self.assertEqual(first["result"], second["result"])
+        self.assertEqual(first["replay_hash"], second["replay_hash"])
+        self.assertEqual(first["provenance"], second["provenance"])
+        prior = self.service.get_operational_assessment("OI-000001", "AS-000001")
+        self.assertTrue(prior["stale"])
+        self.assertFalse(prior["lifecycle_eligible"])
+
+    def test_spatial_assessment_rejects_stale_opportunity_and_updates_lifecycle(self):
+        references = ensure_reference_records(self.service)
+        opportunity = self.repository.get_opportunity("OI-000001")
+        self.service.edit_opportunity(
+            "OI-000001",
+            {"description": opportunity["description"] + " Revised."},
+            "stale-opportunity-test",
+            opportunity["revision"],
+        )
+        status, error, _ = self.request(
+            "POST",
+            "/opportunities/OI-000001/assessments",
+            {"knowledge_review_id": references["knowledge_review"]["review_id"]},
+        )
+        self.assertEqual(status, 409)
+        self.assertEqual(error["error"]["code"], "knowledge_review_stale")
+        self.assertIn(
+            "opportunity revision",
+            " ".join(error["error"]["details"]["reasons"]).lower(),
+        )
+        stale = self.service.get_operational_assessment("OI-000001", "AS-000001")
+        self.assertTrue(stale["stale"])
+        current = self.service.get_opportunity("OI-000001")
+        assessment_step = next(
+            step for step in current["workflow"] if step["key"] == "assessment"
+        )
+        self.assertEqual(assessment_step["state"], "pending")
+
+    def test_spatial_assessment_rejects_stale_evidence_and_superseded_review(self):
+        references = ensure_reference_records(self.service)
+        evidence = references["evidence"]
+        self.service.update_managed_evidence(
+            "OI-000001",
+            "EV-000001",
+            {"notes": evidence["notes"] + " Revised."},
+            "stale-evidence-test",
+            evidence["revision"],
+        )
+        status, error, _ = self.request(
+            "POST",
+            "/opportunities/OI-000001/assessments",
+            {"knowledge_review_id": "KR-000001"},
+        )
+        self.assertEqual(status, 409)
+        self.assertEqual(error["error"]["code"], "knowledge_review_stale")
+        self.assertIn(
+            "evidence trace",
+            " ".join(error["error"]["details"]["reasons"]).lower(),
+        )
+
+        successor = self.service.supersede_knowledge_review(
+            "OI-000001", "KR-000001", "stale-review-test"
+        )
+        self.assertEqual(successor["review_id"], "KR-000002")
+        status, error, _ = self.request(
+            "POST",
+            "/opportunities/OI-000001/assessments",
+            {"knowledge_review_id": "KR-000001"},
+        )
+        self.assertEqual(status, 409)
+        self.assertEqual(error["error"]["code"], "knowledge_review_stale")
+        self.assertIn(
+            "no longer active",
+            " ".join(error["error"]["details"]["reasons"]).lower(),
+        )
+
+    def test_spatial_assessment_persists_and_replays_after_restart(self):
+        persistence_db = Path(self.tempdir.name) / "assessment-persistence.db"
+        first_repository = Repository(persistence_db)
+        first_service = AnchorIntelService(first_repository)
+        references = ensure_reference_records(first_service)
+        replay_hash = references["assessment"]["replay_hash"]
+        first_repository.close()
+
+        second_repository = Repository(persistence_db)
+        try:
+            second_service = AnchorIntelService(second_repository)
+            persisted = second_service.get_operational_assessment(
+                "OI-000001", "AS-000001"
+            )
+            self.assertEqual(persisted["replay_hash"], replay_hash)
+            self.assertFalse(persisted["stale"])
+            replay = second_service.replay_operational_assessment(
+                "OI-000001", "AS-000001", "restart-test"
+            )
+            self.assertTrue(replay["match"])
+        finally:
+            second_repository.close()
 
     def test_knowledge_module_registry_api_integrity_and_ui(self):
         status, collection, _ = self.request("GET", "/knowledge-modules")
@@ -726,6 +900,13 @@ class ApiTestCase(unittest.TestCase):
                 revision INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
             );
+            CREATE TABLE assessments (
+                assessment_id TEXT PRIMARY KEY, opportunity_id TEXT NOT NULL,
+                input_snapshot_json TEXT NOT NULL, result_json TEXT NOT NULL,
+                report_markdown TEXT NOT NULL, recommendation TEXT NOT NULL,
+                score REAL NOT NULL, evidence_confidence TEXT NOT NULL,
+                supersedes_assessment_id TEXT, created_at TEXT NOT NULL
+            );
             INSERT INTO opportunities VALUES (
                 'OI-LEGACY', '{"opportunity_id":"OI-LEGACY","title":"Legacy","geography":"Florida","infrastructure_class":"Utility"}',
                 'Unassessed', 0, 1, '2026-07-19T00:00:00Z', '2026-07-19T00:00:00Z'
@@ -733,6 +914,11 @@ class ApiTestCase(unittest.TestCase):
             INSERT INTO evidence VALUES (
                 'E-LEGACY', 'OI-LEGACY', '{"evidence_id":"E-LEGACY","claim":"Legacy claim","state":"A"}',
                 'A', 1, '2026-07-19T00:00:00Z', '2026-07-19T00:00:00Z'
+            );
+            INSERT INTO assessments VALUES (
+                'ASM-LEGACY', 'OI-LEGACY', '{}',
+                '{"recommendation":"Monitor","score":50,"confidence":"Low"}',
+                '# Legacy', 'Monitor', 50, 'Low', NULL, '2026-07-19T00:00:00Z'
             );
             """
         )
@@ -743,6 +929,12 @@ class ApiTestCase(unittest.TestCase):
             self.assertEqual(evidence["description"], "Legacy claim")
             self.assertFalse(evidence["archived"])
             self.assertIsNone(evidence["archived_at"])
+            legacy_assessment = migrated.get_assessment("ASM-LEGACY")
+            self.assertEqual(legacy_assessment["assessment_kind"], "legacy")
+            self.assertEqual(legacy_assessment["provenance"], {})
+            self.assertEqual(
+                legacy_assessment["updated_at"], "2026-07-19T00:00:00Z"
+            )
             with migrated.connect() as db:
                 tables = {
                     row["name"]

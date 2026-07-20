@@ -1,14 +1,14 @@
 # AnchorIntel API
 
-AnchorIntel API v0.3.0 is the AnchorOS-facing service for the S.P.A.T.I.A.L.
-opportunity lifecycle. Sprint 3 adds a bounded Knowledge Service: versioned
-local Knowledge Modules, deterministic Knowledge Reviews, persisted findings,
-evidence traceability, replay hashes, supersession, dynamic staleness, audit
-events, and lifecycle derivation.
+AnchorIntel API v0.4.0 is the AnchorOS-facing service for the S.P.A.T.I.A.L.
+opportunity lifecycle. Sprint 4 connects the existing S.P.A.T.I.A.L. engine to
+persisted opportunity, evidence, and Knowledge Review records. It adds stable
+`AS-000001` identifiers, immutable execution snapshots, deterministic replay,
+stale-input rejection, assessment audit events, and lifecycle derivation.
 
-Sprint 1 Opportunity Service and Sprint 2 Evidence Service behavior remain
-intact. Sprint 3 does **not** add a new S.P.A.T.I.A.L. assessment flow, dossier
-generation, internet research, external AI execution, or TA-14 integration.
+Sprint 1–3 behavior remains intact. Sprint 4 does **not** generate an Executive
+Opportunity Dossier, add Knowledge Modules, browse the internet, invoke an LLM,
+create evidence during assessment, or modify the scoring engine.
 
 ## Quick start
 
@@ -28,14 +28,17 @@ From the AnchorOS repository root:
 ./apps/anchorintel/api/start-anchorintel.sh
 ```
 
-Open <http://127.0.0.1:8080/opportunities/OI-000001>. The path-safe launcher
-works when parent directories contain spaces. It idempotently seeds:
+Open <http://127.0.0.1:8080/opportunities/OI-000001>. The launcher is safe for
+parent paths containing spaces and idempotently seeds:
 
 - `OI-000001` — Florida Power & Light Asset Intelligence Opportunity;
-- `EV-000001` — bounded Sirius Logic Systems reference evidence; and
-- `KR-000001` — a generated `AKM-GEO-FL-001` review over persisted inputs.
+- `EV-000001` — bounded Sirius Logic Systems reference evidence;
+- `KR-000001` — a generated `AKM-GEO-FL-001` review; and
+- `AS-000001` — a generated S.P.A.T.I.A.L. assessment of that persisted chain.
 
-Existing active or archived records are never overwritten.
+The reference assessment currently returns `Hold`, `33.2/100`, and `Low`
+engine evidence confidence. Those are bounded engine outputs, not claims about
+Florida Power & Light. Existing active or archived records are never overwritten.
 
 Manual start from `apps/anchorintel/api`:
 
@@ -44,83 +47,82 @@ PYTHONPATH="../spatial-opportunity-engine:." \
   python3 -m anchorintel_api --database data/anchorintel.db --seed-reference
 ```
 
-## Service boundary
+## Sprint 4 workflow
 
-| Service | Sprint 3 capability |
-|---|---|
-| Opportunity | List, view, edit, revision-control, and archive opportunities |
-| Evidence | Metadata, file hashing/storage, editing, traceable archive, and controlled classification |
-| Knowledge | Load versioned modules; run, retrieve, complete, supersede, and detect stale reviews |
-| Assessment | Preserve the existing deterministic S.P.A.T.I.A.L. interface |
-| Reporting | Preserve stored JSON and Markdown assessment reports |
-| Lifecycle | Derive Evidence and Knowledge completion from persisted current state |
-| Administration | Record application audit events |
+```text
+OI-000001 → EV-000001 → KR-000001 → AS-000001
+Opportunity   Evidence    Review       Assessment
+```
 
-## Knowledge Module contract
+An operational assessment consumes exactly:
 
-`AKM-GEO-FL-001` is a Git-versioned JSON definition with a canonical SHA-256
-integrity hash. Its executor uses only the current persisted opportunity and
-non-archived evidence. Given the same module version/hash, opportunity revision,
-and evidence trace, it produces the same structured output and output hash.
+1. the current opportunity and revision;
+2. sorted active evidence and revisions;
+3. a completed current Knowledge Review and revision;
+4. the reviewed Knowledge Module version and integrity hash;
+5. S.P.A.T.I.A.L. engine version `0.1.0`; and
+6. AnchorIntel adapter version `1.0.0`.
 
-The output records findings, assumptions, unknowns, risks, missing evidence,
-confidence, consumed evidence IDs, excluded archived evidence IDs, limitations,
-and a disclaimer. It never makes the final Pursue/Monitor/Reject decision.
+No network, model, clock, or mutable external input participates in the result.
+Execution time is stored separately and is excluded from replay identity.
 
-`EV-000001` is explicitly described as Sirius Logic Systems reference analysis.
-It is not an official Florida Power & Light record and does not establish
-endorsement, procurement intent, ownership, service territory, funding
-availability, or regulatory approval.
-
-See `KNOWLEDGE-MODULE-FORMAT.md` and `AKM-GEO-FL-001.md`.
-
-## Knowledge API and workspace
+## Assessment API and workspace
 
 | Method | Route | Purpose |
 |---|---|---|
-| `GET` | `/knowledge-modules` | List active modules (JSON or browser view) |
-| `GET` | `/knowledge-modules/{module_id}` | Retrieve definition, version, questions, and hash |
-| `GET` | `/opportunities/{id}/knowledge-reviews/new` | Browser run form |
-| `POST` / `GET` | `/opportunities/{id}/knowledge-reviews` | Run or list persisted reviews |
-| `GET` | `/opportunities/{id}/knowledge-reviews/{review_id}` | Review output, hashes, and evidence trace |
-| `POST` | `/opportunities/{id}/knowledge-reviews/{review_id}/complete` | Complete a current draft review |
-| `POST` | `/opportunities/{id}/knowledge-reviews/{review_id}/supersede` | Rerun over current inputs and preserve the prior review |
+| `GET` | `/opportunities/{id}/assessments/new` | Readiness screen and bounded-run notice |
+| `POST` / `GET` | `/opportunities/{id}/assessments` | Run or list operational assessments |
+| `GET` | `/opportunities/{id}/assessments/{assessment_id}` | Decision, gates, explanation, trace, and hash |
+| `POST` | `/opportunities/{id}/assessments/{assessment_id}/replay` | Re-execute the immutable stored snapshot and compare hashes |
 
+The earlier `/v1/assessments/run` endpoint remains available for direct engine
+profiles and backward compatibility. The new opportunity-scoped endpoint is the
+strict lifecycle interface and requires a current completed Knowledge Review.
 The complete OpenAPI 3.1 contract is at `/v1/openapi.json`.
 
-## Lifecycle and staleness
+## Explicit adapter boundary
 
-Knowledge Module Review becomes complete only when an active `Completed` review:
+The S.P.A.T.I.A.L. engine contract requires eight dimensions, six gates, and
+lifecycle controls. When those are already persisted on the opportunity, the
+adapter passes them through. Otherwise adapter v1.0.0 supplies documented,
+conservative values from the bounded records. Unsupported domains—such as a
+funding path not covered by the geographic module—remain low or failed rather
+than being inferred as facts.
 
-- references an available Active module with the same version and hash;
-- references the current opportunity revision;
-- contains the exact current active-evidence trace; and
-- has not been superseded.
+The exact adapter payload, derivation basis, opportunity snapshot, evidence
+snapshot, Knowledge Review, and module identity are stored with every
+assessment. The engine package under `spatial-opportunity-engine` is unchanged.
 
-Opportunity edits, evidence edits, evidence archive, module version changes, or
-module hash changes make the prior result stale. A stale result remains
-retrievable but no longer completes the lifecycle. Rerun creates a successor;
-it never overwrites the old record. The S.P.A.T.I.A.L. and dossier steps remain
-pending.
+## Provenance, replay, and staleness
+
+Every operational assessment persists:
+
+- recommendation, score, confidence, risk profile, gates, assumptions,
+  explanation, and evidence trace;
+- opportunity, evidence, Knowledge Review, module, engine, and adapter identity;
+- the exact engine input snapshot; and
+- a canonical SHA-256 replay hash.
+
+Replay re-executes the stored snapshot and compares both the structured result
+and hash. SHA-256 is an integrity comparison mechanism; it is not proof of
+source truth, independent verification, cryptographic immutability, or a
+tamper-evident database.
+
+An assessment becomes stale when the opportunity revision, active evidence
+trace, source Knowledge Review, module, adapter, or engine version changes, or
+the opportunity is archived. Stale results remain retrievable but no longer
+complete `Run S.P.A.T.I.A.L.` in the lifecycle. The dossier step remains pending.
 
 ## Storage and migration
 
-Runtime review results live in the additive SQLite `knowledge_reviews` table.
-Module definitions remain source-controlled JSON. Evidence files remain outside
-SQLite under `data/evidence-files`. Runtime databases, uploads, backups, caches,
-and ZIP files are ignored and excluded from the installation package.
+Sprint 4 extends the existing SQLite `assessments` table additively with kind,
+Knowledge Review link, engine and adapter versions, replay hash, provenance,
+revision, and update timestamp fields. Existing rows are retained as `legacy`.
+No runtime database or uploaded evidence is included in the ZIP.
 
-Repository startup uses `CREATE TABLE IF NOT EXISTS`; it does not rewrite
-existing opportunity, evidence, assessment, lifecycle, or audit records. Back up
-the database before first Sprint 3 startup. See `INSTALL-SPRINT3.md`.
-
-## Audit boundary
-
-The application records module loaded, review started, completed, failed,
-superseded, rerun, and first detected stale events. Events include opportunity,
-review, module version, opportunity revision, evidence trace, time, and a result
-summary. This is an application audit trail, not immutable or independently
-verified storage.
+Back up source, SQLite database/WAL/SHM files, and the evidence file store before
+installation. See `INSTALL-SPRINT4.md` for the exact changed-file inventory,
+migration, installation, and Sprint 3 restoration procedure.
 
 ## Verification
 
@@ -132,13 +134,14 @@ cd ../spatial-opportunity-engine
 python3 -m unittest discover -s tests -v
 ```
 
-See `VERIFICATION.md` and `SPRINT3-VERIFICATION-CHECKLIST.md`.
+The packaged build is verified with 27 API tests and the unchanged eight engine
+tests. See `VERIFICATION.md` and `SPRINT4-VERIFICATION-CHECKLIST.md`.
 
 ## Production boundary
 
-This is a loopback-bound reference service. It does not yet provide
+This is a loopback-bound reference service. It does not yet provide production
 authentication, authorization, TLS termination, tenant isolation, rate limits,
-database encryption, high availability, or tamper-evident audit storage. Do not
-expose it directly to an untrusted network. Knowledge Review output is not legal,
-regulatory, engineering, environmental, financial, or investment advice and is
-not a claim of independent verification.
+database encryption, high availability, tamper-evident audit storage, or load
+qualification. Do not expose it directly to an untrusted network. Assessment
+output is not legal, regulatory, engineering, environmental, financial, or
+investment advice and is not a claim of independent verification.

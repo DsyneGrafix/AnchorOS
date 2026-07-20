@@ -32,6 +32,12 @@ def build_openapi() -> dict:
         "required": True,
         "schema": {"type": "string", "pattern": "^KR-[0-9]{6}$"},
     }
+    assessment_parameter = {
+        "name": "assessment_id",
+        "in": "path",
+        "required": True,
+        "schema": {"type": "string", "pattern": "^AS-[0-9]{6}$"},
+    }
     evidence_json_body = {
         "required": True,
         "content": {
@@ -70,12 +76,12 @@ def build_openapi() -> dict:
         "openapi": "3.1.0",
         "info": {
             "title": "AnchorIntel API",
-            "version": "0.3.0",
+            "version": "0.4.0",
             "description": (
-                "AnchorOS service interface for opportunity, evidence, and deterministic "
-                "Knowledge Module lifecycle management. Sprint 3 adds versioned module "
-                "definitions, persisted Knowledge Reviews, evidence traceability, replay "
-                "hashes, supersession, dynamic staleness, and lifecycle eligibility."
+                "AnchorOS service interface for opportunity, evidence, deterministic "
+                "Knowledge Review, and S.P.A.T.I.A.L. assessment lifecycle management. "
+                "Sprint 4 adds AS identifiers, immutable input snapshots, engine and adapter "
+                "versions, replay hashes, strict stale-input rejection, and dynamic lifecycle eligibility."
             ),
         },
         "servers": [{"url": "http://127.0.0.1:8080"}],
@@ -292,6 +298,54 @@ def build_openapi() -> dict:
                     },
                 },
             },
+            "/opportunities/{opportunity_id}/assessments": {
+                "parameters": [opportunity_parameter],
+                "get": {
+                    "tags": ["Assessments"],
+                    "summary": "List persisted operational assessments with dynamic staleness",
+                    "responses": {
+                        "200": {"description": "Assessment collection"},
+                        "404": {"description": "Opportunity not found"},
+                    },
+                },
+                "post": {
+                    "tags": ["Assessments"],
+                    "summary": "Run the installed S.P.A.T.I.A.L. engine over current persisted lifecycle inputs",
+                    "requestBody": {
+                        "required": False,
+                        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/SpatialAssessmentRun"}}},
+                    },
+                    "responses": {
+                        "201": {"description": "AS assessment persisted"},
+                        "404": {"description": "Opportunity or Knowledge Review not found"},
+                        "409": {"description": "Inputs missing, incomplete, archived, or stale"},
+                        "422": {"description": "Derived snapshot violates the engine contract"},
+                    },
+                },
+            },
+            "/opportunities/{opportunity_id}/assessments/{assessment_id}": {
+                "parameters": [opportunity_parameter, assessment_parameter],
+                "get": {
+                    "tags": ["Assessments"],
+                    "summary": "Retrieve a traceable operational assessment",
+                    "responses": {
+                        "200": {"description": "Operational assessment"},
+                        "404": {"description": "Assessment not found for opportunity"},
+                    },
+                },
+            },
+            "/opportunities/{opportunity_id}/assessments/{assessment_id}/replay": {
+                "parameters": [opportunity_parameter, assessment_parameter],
+                "post": {
+                    "tags": ["Assessments"],
+                    "summary": "Replay the immutable stored snapshot and compare its hash",
+                    "responses": {
+                        "200": {"description": "Replay comparison"},
+                        "404": {"description": "Assessment not found for opportunity"},
+                        "409": {"description": "Stored snapshot cannot be replayed"},
+                    },
+                },
+            },
             "/v1/evidence": {
                 "get": {
                     "tags": ["Evidence"],
@@ -455,6 +509,17 @@ def build_openapi() -> dict:
                             "enum": ["Draft", "Ready", "Incomplete", "Completed"],
                             "default": "Completed",
                         },
+                    },
+                },
+                "SpatialAssessmentRun": {
+                    "type": "object",
+                    "properties": {
+                        "knowledge_review_id": {
+                            "type": "string",
+                            "pattern": "^KR-[0-9]{6}$",
+                            "description": "Optional explicit completed current review; defaults to the current lifecycle-eligible review.",
+                        },
+                        "reason": {"type": "string"},
                     },
                 },
             }

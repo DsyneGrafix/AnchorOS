@@ -4,5 +4,4 @@ from .app import AnchorIntelApplication
 from .service import AnchorIntelService
 
 __all__ = ["AnchorIntelApplication", "AnchorIntelService"]
-__version__ = "0.1.0"
-
+__version__ = "0.4.0"
