@@ -1,6 +1,6 @@
 from collections.abc import Callable
 
-from anchorcore.event import AnchorEvent
+from services.event import AnchorEvent
 from core.module import Module
 
 

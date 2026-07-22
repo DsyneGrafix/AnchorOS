@@ -1,7 +1,7 @@
-from anchorcore.audit import Audit
-from anchorcore.eventbus import EventBus
-from anchorcore.health import Health
-from anchorcore.manifest import PlatformManifest
+from services.audit import Audit
+from services.eventbus import EventBus
+from services.health import Health
+from services.manifest import PlatformManifest
 from banner import print_banner
 from core.boot_pipeline import BootPipeline
 from core.module_manager import ModuleManager
@@ -24,7 +24,7 @@ def boot() -> None:
 
     print("\nDiscovering AnchorCore...\n")
 
-    core_modules = manager.discover("anchorcore")
+    core_modules = manager.discover("services")
 
     for module in core_modules:
         registry.register(module)

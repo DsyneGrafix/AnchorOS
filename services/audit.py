@@ -1,6 +1,5 @@
-from anchorcore.event import AnchorEvent
 from core.module import Module
-
+from services.event import AnchorEvent
 
 class Audit(Module):
     """AnchorCore Audit Service."""

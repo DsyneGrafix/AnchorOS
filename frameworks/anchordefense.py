@@ -1,6 +1,6 @@
-from anchorcore.event import AnchorEvent
-from anchorcore.eventbus import EventBus
-from core.framework_identity import FrameworkIdentity
+from services.event import AnchorEvent
+from services.eventbus import EventBus
+from services.framework_identity import FrameworkIdentity
 from core.module import Module
 from core.service_registry import ServiceRegistry
 
