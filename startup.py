@@ -19,10 +19,10 @@ def boot() -> None:
     pipeline = BootPipeline()
 
     # --------------------------------------------------
-    # Discover AnchorCore
+    # Discover Platform Services
     # --------------------------------------------------
 
-    print("\nDiscovering AnchorCore...\n")
+    print("\nDiscovering Platform Services...\n")
 
     core_modules = manager.discover("services")
 
@@ -169,7 +169,7 @@ def boot() -> None:
     for component in manifest_data["kernel"]:
         print(f"✓ {component}")
 
-    print("\nAnchorCore Services")
+    print("\nPlatform Services")
     print("-" * 40)
 
     for service in manifest_data["services"]:
