@@ -1,0 +1,1347 @@
+import hashlib
+import json
+import os
+import sqlite3
+import tempfile
+import threading
+import unittest
+from pathlib import Path
+from urllib.error import HTTPError
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
+
+from anchorintel_api.anchoros import AnchorIntelAnchorOSService
+from anchorintel_api.app import AnchorIntelApplication
+from anchorintel_api.errors import ApiError
+from anchorintel_api.knowledge import KnowledgeModuleRegistry, module_integrity_hash
+from anchorintel_api.repository import Repository
+from anchorintel_api.reference import (
+    ensure_reference_evidence,
+    ensure_reference_opportunity,
+    ensure_reference_records,
+)
+from anchorintel_api.server import create_server
+from anchorintel_api.service import AnchorIntelService
+
+
+ROOT = Path(__file__).resolve().parents[1]
+ENGINE_ROOT = ROOT.parent / "spatial-opportunity-engine"
+
+
+class ApiTestCase(unittest.TestCase):
+    def setUp(self):
+        os.environ["ANCHORINTEL_ACCESS_LOG"] = "0"
+        self.tempdir = tempfile.TemporaryDirectory()
+        self.repository = Repository(Path(self.tempdir.name) / "test.db")
+        self.service = AnchorIntelService(self.repository)
+        application = AnchorIntelApplication(self.service)
+        self.server = create_server(application, "127.0.0.1", 0)
+        self.port = self.server.server_address[1]
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+
+    def tearDown(self):
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join(timeout=5)
+        self.repository.close()
+        self.tempdir.cleanup()
+
+    def request(self, method, path, payload=None, headers=None):
+        body = json.dumps(payload).encode() if payload is not None else None
+        request_headers = {"X-Actor": "api-test", **(headers or {})}
+        if body is not None:
+            request_headers["Content-Type"] = "application/json"
+        request = Request(
+            f"http://127.0.0.1:{self.port}{path}",
+            data=body,
+            headers=request_headers,
+            method=method,
+        )
+        try:
+            response = urlopen(request, timeout=5)
+        except HTTPError as exc:
+            content = exc.read()
+            parsed = json.loads(content) if content else None
+            return exc.code, parsed, dict(exc.headers)
+        content = response.read()
+        content_type = response.headers.get("Content-Type", "")
+        parsed = json.loads(content) if "application/json" in content_type else content.decode()
+        return response.status, parsed, dict(response.headers)
+
+    def request_raw(self, method, path, payload=None, headers=None):
+        body = json.dumps(payload).encode() if payload is not None else None
+        request_headers = {"X-Actor": "api-test", **(headers or {})}
+        if body is not None:
+            request_headers["Content-Type"] = "application/json"
+        request = Request(
+            f"http://127.0.0.1:{self.port}{path}",
+            data=body,
+            headers=request_headers,
+            method=method,
+        )
+        response = urlopen(request, timeout=5)
+        return response.status, response.read(), dict(response.headers)
+
+    def request_form(self, path, fields):
+        body = urlencode(fields).encode()
+        request = Request(
+            f"http://127.0.0.1:{self.port}{path}",
+            data=body,
+            headers={
+                "X-Actor": "ui-test",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            method="POST",
+        )
+        response = urlopen(request, timeout=5)
+        return response.status, response.read().decode(), dict(response.headers)
+
+    def request_multipart(
+        self,
+        path,
+        fields,
+        filename=None,
+        content=b"",
+        content_type="application/octet-stream",
+    ):
+        boundary = "----AnchorIntelEvidenceBoundary"
+        chunks = []
+        for name, value in fields.items():
+            chunks.extend(
+                [
+                    f"--{boundary}\r\n".encode(),
+                    f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode(),
+                    str(value).encode(),
+                    b"\r\n",
+                ]
+            )
+        if filename is not None:
+            chunks.extend(
+                [
+                    f"--{boundary}\r\n".encode(),
+                    f'Content-Disposition: form-data; name="file"; filename="{filename}"\r\n'.encode(),
+                    f"Content-Type: {content_type}\r\n\r\n".encode(),
+                    content,
+                    b"\r\n",
+                ]
+            )
+        chunks.append(f"--{boundary}--\r\n".encode())
+        request = Request(
+            f"http://127.0.0.1:{self.port}{path}",
+            data=b"".join(chunks),
+            headers={
+                "X-Actor": "upload-test",
+                "Accept": "application/json",
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+            },
+            method="POST",
+        )
+        try:
+            response = urlopen(request, timeout=5)
+        except HTTPError as exc:
+            return exc.code, json.loads(exc.read()), dict(exc.headers)
+        return response.status, json.loads(response.read()), dict(response.headers)
+
+    @staticmethod
+    def managed_evidence_payload(**overrides):
+        payload = {
+            "title": "Utility asset context",
+            "evidence_type": "Technical Record",
+            "source": "Sirius Logic Systems",
+            "source_date": "2026-07-19",
+            "date_collected": "2026-07-19",
+            "description": "Reference context for utility asset intelligence.",
+            "evidence_status": "Collected",
+            "evidence_confidence": "Moderate",
+            "notes": "Test evidence.",
+        }
+        payload.update(overrides)
+        return payload
+
+    def profile(self):
+        return json.loads((ENGINE_ROOT / "input" / "OPP-FL-0001.json").read_text())
+
+    def create_profile(self):
+        raw = self.profile()
+        evidence = raw.pop("evidence")
+        status, opportunity, _ = self.request("POST", "/v1/opportunities", raw)
+        self.assertEqual(status, 201)
+        for item in evidence:
+            item["opportunity_id"] = opportunity["opportunity_id"]
+            status, _, _ = self.request("POST", "/v1/evidence", item)
+            self.assertEqual(status, 201)
+        return opportunity
+
+    def test_health_and_openapi_contract(self):
+        status, health, _ = self.request("GET", "/health")
+        self.assertEqual(status, 200)
+        self.assertEqual(health["status"], "ok")
+        self.assertEqual(health["version"], "0.6.0")
+        status, contract, _ = self.request("GET", "/v1/openapi.json")
+        self.assertEqual(status, 200)
+        self.assertIn("/opportunities/{opportunity_id}/evidence", contract["paths"])
+        self.assertIn(
+            "/opportunities/{opportunity_id}/evidence/{evidence_id}/archive",
+            contract["paths"],
+        )
+        self.assertIn("/knowledge-modules", contract["paths"])
+        self.assertIn(
+            "/opportunities/{opportunity_id}/knowledge-reviews", contract["paths"]
+        )
+        self.assertIn(
+            "/opportunities/{opportunity_id}/assessments", contract["paths"]
+        )
+        self.assertIn(
+            "/opportunities/{opportunity_id}/assessments/{assessment_id}/replay",
+            contract["paths"],
+        )
+        self.assertIn(
+            "/opportunities/{opportunity_id}/dossiers", contract["paths"]
+        )
+        self.assertIn(
+            "/opportunities/{opportunity_id}/dossiers/{dossier_id}/replay",
+            contract["paths"],
+        )
+        self.assertIn(
+            "/opportunities/{opportunity_id}/dossiers/{dossier_id}/{format}",
+            contract["paths"],
+        )
+        self.assertIn(
+            "/opportunities/{opportunity_id}/archives", contract["paths"]
+        )
+        self.assertIn(
+            "/opportunities/{opportunity_id}/archives/{archive_id}/replay",
+            contract["paths"],
+        )
+        self.assertIn("/v1/assessments/run", contract["paths"])
+        self.assertIn("/v1/lifecycle/revalidate", contract["paths"])
+
+    def test_oi_000001_reference_opportunity_and_workspace_flow(self):
+        reference, created = ensure_reference_opportunity(self.service)
+        self.assertTrue(created)
+        self.assertEqual(reference["opportunity_id"], "OI-000001")
+        self.assertEqual(reference["organization"], "Florida Power & Light")
+
+        same_reference, created_again = ensure_reference_opportunity(self.service)
+        self.assertFalse(created_again)
+        self.assertEqual(same_reference["revision"], reference["revision"])
+
+        status, listing, headers = self.request("GET", "/opportunities")
+        self.assertEqual(status, 200)
+        self.assertIn("text/html", headers["Content-Type"])
+        self.assertIn("OI-000001", listing)
+        self.assertIn("Florida Power &amp; Light Asset Intelligence Opportunity", listing)
+
+        status, detail, _ = self.request("GET", "/opportunities/OI-000001")
+        self.assertEqual(status, 200)
+        self.assertIn("Attach Evidence", detail)
+        self.assertIn("Generate Executive Opportunity Dossier", detail)
+
+        status, edit, _ = self.request("GET", "/opportunities/OI-000001/edit")
+        self.assertEqual(status, 200)
+        self.assertIn("Save changes", edit)
+
+        status, edited_page, _ = self.request_form(
+            "/opportunities/OI-000001/edit",
+            {
+                "revision": reference["revision"],
+                "title": reference["title"],
+                "organization": reference["organization"],
+                "sector": reference["sector"],
+                "status": "Discovery",
+                "geography": reference["geography"],
+                "infrastructure_class": reference["infrastructure_class"],
+                "description": reference["description"],
+            },
+        )
+        self.assertEqual(status, 200)
+        self.assertIn("Discovery", edited_page)
+        updated = self.repository.get_opportunity("OI-000001")
+        self.assertEqual(updated["status"], "Discovery")
+        self.assertEqual(updated["revision"], 2)
+
+        status, archived_page, _ = self.request_form(
+            "/opportunities/OI-000001/archive", {}
+        )
+        self.assertEqual(status, 200)
+        self.assertIn("Opportunity archived", archived_page)
+        archived = self.repository.get_opportunity("OI-000001", include_archived=True)
+        self.assertTrue(archived["archived"])
+
+        status, records, _ = self.request(
+            "GET", "/v1/opportunities?include_archived=true"
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(records["items"][0]["opportunity_id"], "OI-000001")
+
+    def test_reference_evidence_seed_is_bounded_and_idempotent(self):
+        first = ensure_reference_records(self.service)
+        self.assertTrue(first["opportunity_created"])
+        self.assertTrue(first["evidence_created"])
+        self.assertEqual(first["evidence"]["evidence_id"], "EV-000001")
+        self.assertEqual(first["evidence"]["evidence_confidence"], "Moderate")
+        self.assertIn("not an official Florida Power & Light document", first["evidence"]["notes"])
+        self.assertTrue(first["knowledge_review_created"])
+        self.assertEqual(first["knowledge_review"]["review_id"], "KR-000001")
+        self.assertEqual(first["knowledge_review"]["confidence"], "Moderate")
+        self.assertIn(
+            "does not independently verify evidence",
+            first["knowledge_review"]["output"]["disclaimer"],
+        )
+        self.assertIn(
+            "not an official Florida Power & Light record",
+            first["knowledge_review"]["output"]["reference_evidence_notice"],
+        )
+        self.assertTrue(first["assessment_created"])
+        self.assertEqual(first["assessment"]["assessment_id"], "AS-000001")
+        self.assertEqual(first["assessment"]["knowledge_review_id"], "KR-000001")
+        self.assertTrue(first["assessment"]["replay_hash"])
+        self.assertTrue(first["dossier_created"])
+        self.assertEqual(first["dossier"]["dossier_id"], "ED-000001")
+
+        second = ensure_reference_records(self.service)
+        self.assertFalse(second["opportunity_created"])
+        self.assertFalse(second["evidence_created"])
+        self.assertFalse(second["knowledge_review_created"])
+        self.assertFalse(second["assessment_created"])
+        self.assertFalse(second["dossier_created"])
+        self.assertEqual(second["evidence"]["revision"], 1)
+        opportunity = self.service.get_opportunity("OI-000001")
+        evidence_step = next(
+            step for step in opportunity["workflow"] if step["key"] == "evidence"
+        )
+        self.assertEqual(evidence_step["state"], "complete")
+        knowledge_step = next(
+            step for step in opportunity["workflow"] if step["key"] == "knowledge"
+        )
+        self.assertEqual(knowledge_step["state"], "complete")
+        assessment_step = next(
+            step for step in opportunity["workflow"] if step["key"] == "assessment"
+        )
+        self.assertEqual(assessment_step["state"], "complete")
+        dossier_step = next(
+            step for step in opportunity["workflow"] if step["key"] == "dossier"
+        )
+        self.assertEqual(dossier_step["state"], "complete")
+
+    def test_spatial_assessment_run_detail_replay_and_lifecycle(self):
+        references = ensure_reference_records(self.service)
+        assessment = references["assessment"]
+        self.assertEqual(assessment["assessment_id"], "AS-000001")
+        self.assertEqual(assessment["assessment_kind"], "spatial_lifecycle")
+        self.assertEqual(assessment["result"]["recommendation"], "Hold")
+        self.assertEqual(assessment["result"]["score"], 33.2)
+        self.assertEqual(assessment["result"]["risk_profile"]["level"], "High")
+        self.assertEqual(assessment["engine_version"], "0.1.0")
+        self.assertEqual(assessment["adapter_version"], "1.0.0")
+
+        status, run_page, _ = self.request(
+            "GET",
+            "/opportunities/OI-000001/assessments/new",
+            headers={"Accept": "text/html"},
+        )
+        self.assertEqual(status, 200)
+        self.assertIn("Run S.P.A.T.I.A.L.", run_page)
+        self.assertIn("persisted local records", run_page)
+        self.assertIn("KR-000001", run_page)
+
+        status, detail, _ = self.request(
+            "GET", "/opportunities/OI-000001/assessments/AS-000001"
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(detail["knowledge_review_id"], "KR-000001")
+        self.assertEqual(detail["result"]["evidence_trace"][0]["evidence_id"], "EV-000001")
+
+        status, detail_page, _ = self.request(
+            "GET",
+            "/opportunities/OI-000001/assessments/AS-000001",
+            headers={"Accept": "text/html"},
+        )
+        self.assertEqual(status, 200)
+        self.assertIn("Engine explanation", detail_page)
+        self.assertIn("Replay hash", detail_page)
+        self.assertIn("Evidence trace", detail_page)
+
+        status, replay, _ = self.request(
+            "POST", "/opportunities/OI-000001/assessments/AS-000001/replay", {}
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(replay["match"])
+        self.assertEqual(
+            replay["stored_replay_hash"], replay["recomputed_replay_hash"]
+        )
+        actions = [item["action"] for item in self.repository.list_audit(50)]
+        self.assertIn("assessment.spatial_completed", actions)
+        self.assertIn("assessment.replayed", actions)
+
+    def test_spatial_assessment_is_deterministic_for_identical_inputs(self):
+        references = ensure_reference_records(self.service)
+        first = references["assessment"]
+        second = self.service.run_spatial_assessment(
+            "OI-000001", "determinism-test", "KR-000001"
+        )
+        self.assertEqual(second["assessment_id"], "AS-000002")
+        self.assertEqual(second["supersedes_assessment_id"], "AS-000001")
+        self.assertEqual(first["result"], second["result"])
+        self.assertEqual(first["replay_hash"], second["replay_hash"])
+        self.assertEqual(first["provenance"], second["provenance"])
+        prior = self.service.get_operational_assessment("OI-000001", "AS-000001")
+        self.assertTrue(prior["stale"])
+        self.assertFalse(prior["lifecycle_eligible"])
+
+    def test_spatial_assessment_rejects_stale_opportunity_and_updates_lifecycle(self):
+        references = ensure_reference_records(self.service)
+        opportunity = self.repository.get_opportunity("OI-000001")
+        self.service.edit_opportunity(
+            "OI-000001",
+            {"description": opportunity["description"] + " Revised."},
+            "stale-opportunity-test",
+            opportunity["revision"],
+        )
+        status, error, _ = self.request(
+            "POST",
+            "/opportunities/OI-000001/assessments",
+            {"knowledge_review_id": references["knowledge_review"]["review_id"]},
+        )
+        self.assertEqual(status, 409)
+        self.assertEqual(error["error"]["code"], "knowledge_review_stale")
+        self.assertIn(
+            "opportunity revision",
+            " ".join(error["error"]["details"]["reasons"]).lower(),
+        )
+        stale = self.service.get_operational_assessment("OI-000001", "AS-000001")
+        self.assertTrue(stale["stale"])
+        current = self.service.get_opportunity("OI-000001")
+        assessment_step = next(
+            step for step in current["workflow"] if step["key"] == "assessment"
+        )
+        self.assertEqual(assessment_step["state"], "pending")
+
+    def test_spatial_assessment_rejects_stale_evidence_and_superseded_review(self):
+        references = ensure_reference_records(self.service)
+        evidence = references["evidence"]
+        self.service.update_managed_evidence(
+            "OI-000001",
+            "EV-000001",
+            {"notes": evidence["notes"] + " Revised."},
+            "stale-evidence-test",
+            evidence["revision"],
+        )
+        status, error, _ = self.request(
+            "POST",
+            "/opportunities/OI-000001/assessments",
+            {"knowledge_review_id": "KR-000001"},
+        )
+        self.assertEqual(status, 409)
+        self.assertEqual(error["error"]["code"], "knowledge_review_stale")
+        self.assertIn(
+            "evidence trace",
+            " ".join(error["error"]["details"]["reasons"]).lower(),
+        )
+
+        successor = self.service.supersede_knowledge_review(
+            "OI-000001", "KR-000001", "stale-review-test"
+        )
+        self.assertEqual(successor["review_id"], "KR-000002")
+        status, error, _ = self.request(
+            "POST",
+            "/opportunities/OI-000001/assessments",
+            {"knowledge_review_id": "KR-000001"},
+        )
+        self.assertEqual(status, 409)
+        self.assertEqual(error["error"]["code"], "knowledge_review_stale")
+        self.assertIn(
+            "no longer active",
+            " ".join(error["error"]["details"]["reasons"]).lower(),
+        )
+
+    def test_spatial_assessment_persists_and_replays_after_restart(self):
+        persistence_db = Path(self.tempdir.name) / "assessment-persistence.db"
+        first_repository = Repository(persistence_db)
+        first_service = AnchorIntelService(first_repository)
+        references = ensure_reference_records(first_service)
+        replay_hash = references["assessment"]["replay_hash"]
+        first_repository.close()
+
+        second_repository = Repository(persistence_db)
+        try:
+            second_service = AnchorIntelService(second_repository)
+            persisted = second_service.get_operational_assessment(
+                "OI-000001", "AS-000001"
+            )
+            self.assertEqual(persisted["replay_hash"], replay_hash)
+            self.assertFalse(persisted["stale"])
+            replay = second_service.replay_operational_assessment(
+                "OI-000001", "AS-000001", "restart-test"
+            )
+            self.assertTrue(replay["match"])
+        finally:
+            second_repository.close()
+
+    def test_knowledge_module_registry_api_integrity_and_ui(self):
+        status, collection, _ = self.request("GET", "/knowledge-modules")
+        self.assertEqual(status, 200)
+        module = collection["items"][0]
+        self.assertEqual(module["module_id"], "AKM-GEO-FL-001")
+        self.assertEqual(module["version"], "1.0")
+        self.assertEqual(module["review_question_count"], 11)
+
+        status, detail, _ = self.request(
+            "GET", "/knowledge-modules/AKM-GEO-FL-001"
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(detail["name"], "Florida Infrastructure Geographic Context")
+        self.assertEqual(detail["integrity_hash"], module_integrity_hash(detail))
+
+        status, page, _ = self.request(
+            "GET", "/knowledge-modules", headers={"Accept": "text/html"}
+        )
+        self.assertEqual(status, 200)
+        self.assertIn("Versioned, bounded review logic", page)
+        self.assertIn("AKM-GEO-FL-001", page)
+
+        status, error, _ = self.request("GET", "/knowledge-modules/AKM-MISSING-001")
+        self.assertEqual(status, 404)
+        self.assertEqual(error["error"]["code"], "knowledge_module_not_found")
+
+    def test_knowledge_module_rejects_malformed_and_hash_mismatch_definitions(self):
+        module = json.loads(
+            (ROOT / "anchorintel_api" / "knowledge_modules" / "AKM-GEO-FL-001.json").read_text()
+        )
+        malformed_dir = Path(self.tempdir.name) / "malformed-modules"
+        malformed_dir.mkdir()
+        malformed = dict(module)
+        malformed.pop("review_questions")
+        (malformed_dir / "malformed.json").write_text(json.dumps(malformed))
+        with self.assertRaises(ApiError) as malformed_error:
+            KnowledgeModuleRegistry(malformed_dir)
+        self.assertEqual(malformed_error.exception.code, "invalid_knowledge_module")
+
+        mismatch_dir = Path(self.tempdir.name) / "mismatch-modules"
+        mismatch_dir.mkdir()
+        mismatch = dict(module)
+        mismatch["name"] = "Tampered module"
+        (mismatch_dir / "mismatch.json").write_text(json.dumps(mismatch))
+        with self.assertRaises(ApiError) as mismatch_error:
+            KnowledgeModuleRegistry(mismatch_dir)
+        self.assertEqual(
+            mismatch_error.exception.code, "knowledge_module_integrity_mismatch"
+        )
+
+    def test_knowledge_review_is_deterministic_traceable_and_persisted(self):
+        ensure_reference_opportunity(self.service)
+        first_evidence = self.service.create_managed_evidence(
+            "OI-000001", self.managed_evidence_payload(), "knowledge-test"
+        )
+        archived_evidence = self.service.create_managed_evidence(
+            "OI-000001",
+            self.managed_evidence_payload(title="Archived context"),
+            "knowledge-test",
+        )
+        self.service.archive_managed_evidence(
+            "OI-000001",
+            archived_evidence["evidence_id"],
+            "knowledge-test",
+            archived_evidence["revision"],
+        )
+
+        status, first, _ = self.request(
+            "POST",
+            "/opportunities/OI-000001/knowledge-reviews",
+            {"module_id": "AKM-GEO-FL-001", "review_status": "Completed"},
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(first["review_id"], "KR-000001")
+        self.assertEqual(
+            [item["evidence_id"] for item in first["evidence_trace"]],
+            [first_evidence["evidence_id"]],
+        )
+        self.assertIn(
+            archived_evidence["evidence_id"],
+            first["output"]["excluded_archived_evidence_ids"],
+        )
+        self.assertTrue(first["lifecycle_eligible"])
+
+        status, second, _ = self.request(
+            "POST",
+            "/opportunities/OI-000001/knowledge-reviews",
+            {"module_id": "AKM-GEO-FL-001", "review_status": "Completed"},
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(second["input_snapshot_hash"], first["input_snapshot_hash"])
+        self.assertEqual(second["output_hash"], first["output_hash"])
+        self.assertEqual(second["output"], first["output"])
+
+        status, listing, _ = self.request(
+            "GET", "/opportunities/OI-000001/knowledge-reviews"
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(len(listing["items"]), 2)
+        status, retrieved, _ = self.request(
+            "GET", "/opportunities/OI-000001/knowledge-reviews/KR-000001"
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(retrieved["output_hash"], first["output_hash"])
+
+        persistence_db = Path(self.repository.database_path)
+        self.repository.close()
+        restarted = Repository(persistence_db)
+        try:
+            persisted = restarted.get_knowledge_review("OI-000001", "KR-000001")
+            self.assertEqual(persisted["input_snapshot_hash"], first["input_snapshot_hash"])
+        finally:
+            restarted.close()
+        self.repository = Repository(persistence_db)
+        self.service.repository = self.repository
+
+    def test_draft_completion_controls_lifecycle_and_audit(self):
+        ensure_reference_opportunity(self.service)
+        self.service.create_managed_evidence(
+            "OI-000001", self.managed_evidence_payload(), "knowledge-test"
+        )
+        status, draft, _ = self.request(
+            "POST",
+            "/opportunities/OI-000001/knowledge-reviews",
+            {"module_id": "AKM-GEO-FL-001", "review_status": "Draft"},
+        )
+        self.assertEqual(status, 201)
+        self.assertFalse(draft["lifecycle_eligible"])
+        opportunity = self.service.get_opportunity("OI-000001")
+        knowledge = next(
+            item for item in opportunity["workflow"] if item["key"] == "knowledge"
+        )
+        self.assertEqual(knowledge["state"], "pending")
+
+        status, completed, _ = self.request(
+            "POST",
+            f"/opportunities/OI-000001/knowledge-reviews/{draft['review_id']}/complete",
+            {"revision": draft["revision"]},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(completed["review_status"], "Completed")
+        self.assertEqual(completed["revision"], 2)
+        self.assertTrue(completed["lifecycle_eligible"])
+        actions = [item["action"] for item in self.repository.list_audit(30)]
+        self.assertIn("knowledge_module.loaded", actions)
+        self.assertIn("knowledge_review.started", actions)
+        self.assertIn("knowledge_review.completed", actions)
+
+    def test_review_staleness_after_opportunity_and_evidence_changes(self):
+        ensure_reference_opportunity(self.service)
+        evidence = self.service.create_managed_evidence(
+            "OI-000001", self.managed_evidence_payload(), "knowledge-test"
+        )
+        review = self.service.run_knowledge_review(
+            "OI-000001", "AKM-GEO-FL-001", "knowledge-test", "Completed"
+        )
+        opportunity = self.repository.get_opportunity("OI-000001")
+        updated = dict(opportunity)
+        updated["status"] = "Discovery"
+        self.service.edit_opportunity(
+            "OI-000001", updated, "knowledge-test", opportunity["revision"]
+        )
+        stale = self.service.get_knowledge_review("OI-000001", review["review_id"])
+        self.assertTrue(stale["stale"])
+        self.assertIn("The opportunity revision has changed.", stale["stale_reasons"])
+        self.assertIn(
+            "knowledge_review.stale",
+            [item["action"] for item in self.repository.list_audit(50)],
+        )
+        knowledge = next(
+            item
+            for item in self.service.get_opportunity("OI-000001")["workflow"]
+            if item["key"] == "knowledge"
+        )
+        self.assertEqual(knowledge["state"], "pending")
+
+        successor = self.service.supersede_knowledge_review(
+            "OI-000001", review["review_id"], "knowledge-test"
+        )
+        self.assertTrue(successor["lifecycle_eligible"])
+        prior = self.repository.get_knowledge_review("OI-000001", review["review_id"])
+        self.assertEqual(prior["review_status"], "Superseded")
+
+        revised_evidence = self.service.update_managed_evidence(
+            "OI-000001",
+            evidence["evidence_id"],
+            {"notes": "Changed after review"},
+            "knowledge-test",
+            evidence["revision"],
+        )
+        stale_successor = self.service.get_knowledge_review(
+            "OI-000001", successor["review_id"]
+        )
+        self.assertTrue(stale_successor["stale"])
+        self.assertIn("The active evidence trace has changed.", stale_successor["stale_reasons"])
+
+        rerun = self.service.supersede_knowledge_review(
+            "OI-000001", successor["review_id"], "knowledge-test"
+        )
+        self.service.archive_managed_evidence(
+            "OI-000001",
+            revised_evidence["evidence_id"],
+            "knowledge-test",
+            revised_evidence["revision"],
+        )
+        self.assertTrue(
+            self.service.get_knowledge_review("OI-000001", rerun["review_id"])[
+                "stale"
+            ]
+        )
+
+    def test_failed_executor_persists_incomplete_review_and_audit_event(self):
+        ensure_reference_opportunity(self.service)
+        module = json.loads(
+            (ROOT / "anchorintel_api" / "knowledge_modules" / "AKM-GEO-FL-001.json").read_text()
+        )
+        module["module_id"] = "AKM-GEO-TX-001"
+        module["name"] = "Unsupported Test Module"
+        module["jurisdiction"] = "Texas"
+        module["integrity_hash"] = module_integrity_hash(module)
+        module_dir = Path(self.tempdir.name) / "unsupported-module"
+        module_dir.mkdir()
+        (module_dir / "AKM-GEO-TX-001.json").write_text(json.dumps(module))
+        alternate = AnchorIntelService(
+            self.repository,
+            evidence_storage_dir=Path(self.tempdir.name) / "alternate-evidence",
+            knowledge_module_dir=module_dir,
+        )
+        with self.assertRaises(ApiError) as failure:
+            alternate.run_knowledge_review(
+                "OI-000001", "AKM-GEO-TX-001", "failure-test"
+            )
+        self.assertEqual(
+            failure.exception.code, "knowledge_module_executor_unavailable"
+        )
+        failed_id = failure.exception.details["failed_review_id"]
+        failed = self.repository.get_knowledge_review("OI-000001", failed_id)
+        self.assertEqual(failed["review_status"], "Incomplete")
+        self.assertEqual(failed["confidence"], "Unknown")
+        actions = [item["action"] for item in self.repository.list_audit(50)]
+        self.assertIn("knowledge_review.failed", actions)
+
+    def test_knowledge_review_validation_and_html_traceability(self):
+        status, error, _ = self.request(
+            "POST",
+            "/opportunities/MISSING/knowledge-reviews",
+            {"module_id": "AKM-GEO-FL-001"},
+        )
+        self.assertEqual(status, 404)
+        self.assertEqual(error["error"]["code"], "opportunity_not_found")
+        ensure_reference_opportunity(self.service)
+        status, error, _ = self.request(
+            "POST",
+            "/opportunities/OI-000001/knowledge-reviews",
+            {"module_id": "AKM-GEO-FL-999"},
+        )
+        self.assertEqual(status, 404)
+        self.assertEqual(error["error"]["code"], "knowledge_module_not_found")
+
+        self.service.create_managed_evidence(
+            "OI-000001", self.managed_evidence_payload(), "knowledge-test"
+        )
+        status, run_page, _ = self.request(
+            "GET",
+            "/opportunities/OI-000001/knowledge-reviews/new",
+            headers={"Accept": "text/html"},
+        )
+        self.assertEqual(status, 200)
+        self.assertIn("Run module", run_page)
+        self.assertIn("AKM-GEO-FL-001", run_page)
+        review = self.service.run_knowledge_review(
+            "OI-000001", "AKM-GEO-FL-001", "knowledge-test"
+        )
+        status, page, _ = self.request(
+            "GET",
+            f"/opportunities/OI-000001/knowledge-reviews/{review['review_id']}",
+            headers={"Accept": "text/html"},
+        )
+        self.assertEqual(status, 200)
+        self.assertIn("Evidence trace", page)
+        self.assertIn("Replay hashes", page)
+        self.assertIn("EV-000001", page)
+        self.assertIn("does not independently verify evidence", page)
+
+    def test_managed_evidence_metadata_crud_archive_and_lifecycle(self):
+        ensure_reference_opportunity(self.service)
+        status, add_page, _ = self.request(
+            "GET",
+            "/opportunities/OI-000001/evidence/new",
+            headers={"Accept": "text/html"},
+        )
+        self.assertEqual(status, 200)
+        self.assertIn("Add Evidence", add_page)
+        self.assertIn("Technical Record", add_page)
+
+        status, created, _ = self.request(
+            "POST",
+            "/opportunities/OI-000001/evidence",
+            self.managed_evidence_payload(),
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(created["evidence_id"], "EV-000001")
+        self.assertEqual(created["revision"], 1)
+        self.assertFalse(created["archived"])
+        self.assertIsInstance(created["internal_id"], int)
+
+        status, listing, _ = self.request(
+            "GET",
+            "/opportunities/OI-000001/evidence",
+            headers={"Accept": "application/json"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(listing["items"][0]["title"], "Utility asset context")
+
+        status, retrieved, _ = self.request(
+            "GET", "/opportunities/OI-000001/evidence/EV-000001"
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(retrieved["source"], "Sirius Logic Systems")
+
+        status, detail, _ = self.request(
+            "GET",
+            "/opportunities/OI-000001/evidence/EV-000001",
+            headers={"Accept": "text/html"},
+        )
+        self.assertEqual(status, 200)
+        self.assertIn("Metadata-only evidence", detail)
+        self.assertIn("Utility asset context", detail)
+
+        status, edit_page, _ = self.request(
+            "GET",
+            "/opportunities/OI-000001/evidence/EV-000001/edit",
+            headers={"Accept": "text/html"},
+        )
+        self.assertEqual(status, 200)
+        self.assertIn("Save metadata", edit_page)
+
+        status, updated, _ = self.request(
+            "PATCH",
+            "/opportunities/OI-000001/evidence/EV-000001",
+            {"evidence_status": "Under Review", "notes": "Metadata reviewed."},
+            {"If-Match": "1"},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(updated["revision"], 2)
+        self.assertEqual(updated["evidence_status"], "Under Review")
+
+        page_status, detail_page, _ = self.request(
+            "GET", "/opportunities/OI-000001", headers={"Accept": "text/html"}
+        )
+        self.assertEqual(page_status, 200)
+        self.assertIn("EV-000001", detail_page)
+        self.assertIn('class="complete"', detail_page)
+
+        status, archived, _ = self.request(
+            "POST",
+            "/opportunities/OI-000001/evidence/EV-000001/archive",
+            {"revision": 2},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(archived["archived"])
+        self.assertEqual(archived["revision"], 3)
+
+        opportunity = self.service.get_opportunity("OI-000001")
+        evidence_step = next(
+            step for step in opportunity["workflow"] if step["key"] == "evidence"
+        )
+        self.assertEqual(evidence_step["state"], "pending")
+        actions = [item["action"] for item in self.repository.list_audit(20)]
+        self.assertIn("evidence.created", actions)
+        self.assertIn("evidence.metadata_updated", actions)
+        self.assertIn("evidence.archived", actions)
+
+    def test_managed_evidence_file_upload_hash_and_download(self):
+        ensure_reference_opportunity(self.service)
+        content = b"bounded reference evidence\n"
+        status, created, _ = self.request_multipart(
+            "/opportunities/OI-000001/evidence",
+            self.managed_evidence_payload(title="File-backed evidence"),
+            filename="utility-context.txt",
+            content=content,
+            content_type="text/plain",
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(created["sha256"], hashlib.sha256(content).hexdigest())
+        self.assertEqual(created["file_name"], "utility-context.txt")
+        self.assertNotIn("utility-context", created["storage_name"])
+        self.assertTrue(
+            (self.service.evidence_storage_dir / created["storage_name"]).is_file()
+        )
+
+        status, downloaded, headers = self.request(
+            "GET", "/opportunities/OI-000001/evidence/EV-000001/file"
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(downloaded, content.decode())
+        self.assertIn("text/plain", headers["Content-Type"])
+        actions = [item["action"] for item in self.repository.list_audit(20)]
+        self.assertIn("evidence.file_uploaded", actions)
+
+    def test_managed_evidence_validation_and_path_safety(self):
+        status, error, _ = self.request(
+            "POST",
+            "/opportunities/MISSING/evidence",
+            self.managed_evidence_payload(),
+        )
+        self.assertEqual(status, 404)
+        self.assertEqual(error["error"]["code"], "opportunity_not_found")
+
+        ensure_reference_opportunity(self.service)
+        for field, value, code in (
+            ("evidence_type", "Rumor", "invalid_evidence_type"),
+            ("evidence_status", "Published", "invalid_evidence_status"),
+        ):
+            status, error, _ = self.request(
+                "POST",
+                "/opportunities/OI-000001/evidence",
+                self.managed_evidence_payload(**{field: value}),
+            )
+            self.assertEqual(status, 400)
+            self.assertEqual(error["error"]["code"], code)
+
+        status, error, _ = self.request_multipart(
+            "/opportunities/OI-000001/evidence",
+            self.managed_evidence_payload(),
+            filename="../outside.txt",
+            content=b"unsafe",
+            content_type="text/plain",
+        )
+        self.assertEqual(status, 400)
+        self.assertEqual(error["error"]["code"], "unsafe_filename")
+
+        self.service.max_file_size = 4
+        status, error, _ = self.request_multipart(
+            "/opportunities/OI-000001/evidence",
+            self.managed_evidence_payload(),
+            filename="bounded.txt",
+            content=b"12345",
+            content_type="text/plain",
+        )
+        self.assertEqual(status, 413)
+        self.assertEqual(error["error"]["code"], "file_too_large")
+
+    def test_existing_database_schema_is_migrated_without_data_loss(self):
+        migration_db = Path(self.tempdir.name) / "migration.db"
+        connection = sqlite3.connect(migration_db)
+        connection.executescript(
+            """
+            CREATE TABLE opportunities (
+                opportunity_id TEXT PRIMARY KEY, record_json TEXT NOT NULL,
+                lifecycle_state TEXT NOT NULL DEFAULT 'Unassessed',
+                archived INTEGER NOT NULL DEFAULT 0, revision INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+            );
+            CREATE TABLE evidence (
+                evidence_id TEXT PRIMARY KEY, opportunity_id TEXT NOT NULL,
+                record_json TEXT NOT NULL, classification TEXT NOT NULL,
+                revision INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE assessments (
+                assessment_id TEXT PRIMARY KEY, opportunity_id TEXT NOT NULL,
+                input_snapshot_json TEXT NOT NULL, result_json TEXT NOT NULL,
+                report_markdown TEXT NOT NULL, recommendation TEXT NOT NULL,
+                score REAL NOT NULL, evidence_confidence TEXT NOT NULL,
+                supersedes_assessment_id TEXT, created_at TEXT NOT NULL
+            );
+            INSERT INTO opportunities VALUES (
+                'OI-LEGACY', '{"opportunity_id":"OI-LEGACY","title":"Legacy","geography":"Florida","infrastructure_class":"Utility"}',
+                'Unassessed', 0, 1, '2026-07-19T00:00:00Z', '2026-07-19T00:00:00Z'
+            );
+            INSERT INTO evidence VALUES (
+                'E-LEGACY', 'OI-LEGACY', '{"evidence_id":"E-LEGACY","claim":"Legacy claim","state":"A"}',
+                'A', 1, '2026-07-19T00:00:00Z', '2026-07-19T00:00:00Z'
+            );
+            INSERT INTO assessments VALUES (
+                'ASM-LEGACY', 'OI-LEGACY', '{}',
+                '{"recommendation":"Monitor","score":50,"confidence":"Low"}',
+                '# Legacy', 'Monitor', 50, 'Low', NULL, '2026-07-19T00:00:00Z'
+            );
+            """
+        )
+        connection.close()
+        migrated = Repository(migration_db)
+        try:
+            evidence = migrated.get_evidence("E-LEGACY")
+            self.assertEqual(evidence["description"], "Legacy claim")
+            self.assertFalse(evidence["archived"])
+            self.assertIsNone(evidence["archived_at"])
+            legacy_assessment = migrated.get_assessment("ASM-LEGACY")
+            self.assertEqual(legacy_assessment["assessment_kind"], "legacy")
+            self.assertEqual(legacy_assessment["provenance"], {})
+            self.assertEqual(
+                legacy_assessment["updated_at"], "2026-07-19T00:00:00Z"
+            )
+            with migrated.connect() as db:
+                tables = {
+                    row["name"]
+                    for row in db.execute(
+                        "SELECT name FROM sqlite_master WHERE type = 'table'"
+                    ).fetchall()
+                }
+            self.assertIn("knowledge_reviews", tables)
+            self.assertIn("executive_dossiers", tables)
+            self.assertIn("archives", tables)
+        finally:
+            migrated.close()
+
+    def test_managed_evidence_persists_after_repository_restart(self):
+        persistence_db = Path(self.tempdir.name) / "persistence.db"
+        first_repository = Repository(persistence_db)
+        first_service = AnchorIntelService(first_repository)
+        ensure_reference_opportunity(first_service)
+        created = first_service.create_managed_evidence(
+            "OI-000001",
+            self.managed_evidence_payload(title="Restart persistence evidence"),
+            "restart-test",
+        )
+        first_repository.close()
+
+        second_repository = Repository(persistence_db)
+        try:
+            persisted = second_repository.get_evidence(created["evidence_id"])
+            self.assertEqual(persisted["title"], "Restart persistence evidence")
+            self.assertEqual(persisted["revision"], 1)
+        finally:
+            second_repository.close()
+
+    def test_anchoros_lifecycle_adapter(self):
+        adapter = AnchorIntelAnchorOSService(
+            database_path=Path(self.tempdir.name) / "anchoros.db", port=0
+        )
+        self.assertEqual(adapter.register()["state"], "Registered")
+        try:
+            health = adapter.start()
+            self.assertEqual(health["state"], "Running")
+            with urlopen(f"http://127.0.0.1:{health['port']}/health", timeout=5) as response:
+                self.assertEqual(response.status, 200)
+        finally:
+            self.assertEqual(adapter.stop()["state"], "Stopped")
+
+    def test_complete_assessment_and_reporting_lifecycle(self):
+        opportunity = self.create_profile()
+        status, assessment, _ = self.request(
+            "POST",
+            "/v1/assessments/run",
+            {"opportunity_id": opportunity["opportunity_id"], "assessment_date": "2026-07-18"},
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(assessment["result"]["recommendation"], "Hold")
+        self.assertEqual(assessment["result"]["score"], 37.5)
+        assessment_id = assessment["assessment_id"]
+
+        status, report_json, _ = self.request(
+            "POST", "/v1/reports/json", {"assessment_id": assessment_id}
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(report_json["confidence"], "Low")
+        status, report_markdown, headers = self.request(
+            "POST", "/v1/reports/markdown", {"assessment_id": assessment_id}
+        )
+        self.assertEqual(status, 200)
+        self.assertIn("text/markdown", headers["Content-Type"])
+        self.assertIn("**Hold**", report_markdown)
+
+        status, holds, _ = self.request("GET", "/v1/lifecycle/holds")
+        self.assertEqual(status, 200)
+        self.assertEqual(len(holds["items"]), 1)
+        status, due, _ = self.request("GET", "/v1/lifecycle/reviews/due?as_of=2026-08-01")
+        self.assertEqual(status, 200)
+        self.assertEqual(due["items"][0]["opportunity_id"], opportunity["opportunity_id"])
+
+    def test_controlled_evidence_promotion(self):
+        raw = self.profile()
+        raw.pop("evidence")
+        _, opportunity, _ = self.request("POST", "/v1/opportunities", raw)
+        evidence = {
+            "evidence_id": "E-PROMOTE",
+            "opportunity_id": opportunity["opportunity_id"],
+            "claim": "A current filing supports the opportunity.",
+            "state": "A",
+            "material": True,
+            "source": "Working note",
+        }
+        status, created, _ = self.request("POST", "/v1/evidence", evidence)
+        self.assertEqual(status, 201)
+
+        status, error, _ = self.request("PATCH", "/v1/evidence/E-PROMOTE", {"state": "S"})
+        self.assertEqual(status, 409)
+        self.assertEqual(error["error"]["code"], "verification_required")
+
+        status, supported, _ = self.request(
+            "POST",
+            "/v1/evidence/E-PROMOTE/verify",
+            {"verification_note": "Matched to the identified filing.", "source": "FPSC filing"},
+            {"If-Match": str(created["revision"])},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(supported["state"], "S")
+        status, verified, _ = self.request(
+            "POST",
+            "/v1/evidence/E-PROMOTE/verify",
+            {"verification_note": "Authority, date, and claim were independently checked.", "source": "FPSC filing"},
+            {"If-Match": str(supported["revision"])},
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(verified["state"], "V")
+
+    def test_revision_conflict_is_visible(self):
+        raw = self.profile()
+        raw.pop("evidence")
+        _, opportunity, _ = self.request("POST", "/v1/opportunities", raw)
+        raw["title"] = "Updated title"
+        status, _, _ = self.request(
+            "PUT",
+            f"/v1/opportunities/{opportunity['opportunity_id']}",
+            raw,
+            {"If-Match": "999"},
+        )
+        self.assertEqual(status, 409)
+
+    def test_incomplete_assessment_returns_422(self):
+        payload = {
+            "opportunity_id": "OPP-DRAFT",
+            "title": "Draft opportunity",
+            "geography": "Florida",
+            "infrastructure_class": "Electric utility"
+        }
+        status, _, _ = self.request("POST", "/v1/opportunities", payload)
+        self.assertEqual(status, 201)
+        status, error, _ = self.request(
+            "POST", "/v1/assessments/run", {"opportunity_id": "OPP-DRAFT"}
+        )
+        self.assertEqual(status, 422)
+        self.assertEqual(error["error"]["code"], "assessment_input_incomplete")
+
+    def test_revalidation_supersedes_prior_assessment(self):
+        opportunity = self.create_profile()
+        _, first, _ = self.request(
+            "POST",
+            "/v1/assessments/run",
+            {"opportunity_id": opportunity["opportunity_id"], "assessment_date": "2026-07-18"},
+        )
+        status, second, _ = self.request(
+            "POST",
+            "/v1/lifecycle/revalidate",
+            {
+                "opportunity_id": opportunity["opportunity_id"],
+                "assessment_date": "2026-08-01",
+                "reason": "Scheduled evidence review",
+                "lifecycle": {"review_date": "2026-09-01"}
+            },
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(second["supersedes_assessment_id"], first["assessment_id"])
+
+    def test_archive_and_audit(self):
+        opportunity = self.create_profile()
+        status, archived, _ = self.request(
+            "DELETE", f"/v1/opportunities/{opportunity['opportunity_id']}"
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(archived["archived"])
+        status, error, _ = self.request(
+            "GET", f"/v1/opportunities/{opportunity['opportunity_id']}"
+        )
+        self.assertEqual(status, 404)
+        status, audit, _ = self.request("GET", "/v1/admin/audit?limit=50")
+        self.assertEqual(status, 200)
+        self.assertTrue(any(item["action"] == "opportunity.archived" for item in audit["items"]))
+
+    def test_executive_dossier_api_ui_exports_and_replay(self):
+        references = ensure_reference_records(self.service)
+        dossier = references["dossier"]
+        self.assertEqual(dossier["dossier_id"], "ED-000001")
+        document = dossier["document"]
+        self.assertEqual(
+            document["spatial_assessment_summary"]["recommendation"],
+            references["assessment"]["result"]["recommendation"],
+        )
+        self.assertEqual(document["evidence_summary"]["count"], 1)
+        self.assertEqual(
+            document["traceability"]["chain"],
+            ["OI-000001", "EV-000001", "KR-000001", "AS-000001", "ED-000001"],
+        )
+        self.assertIn(
+            "does not independently verify evidence", " ".join(document["footer"])
+        )
+
+        status, run_page, _ = self.request(
+            "GET",
+            "/opportunities/OI-000001/dossiers/new",
+            headers={"Accept": "text/html"},
+        )
+        self.assertEqual(status, 200)
+        self.assertIn("Generate Executive Dossier", run_page)
+        self.assertIn("does not browse the internet", run_page)
+
+        status, generated, _ = self.request(
+            "POST", "/opportunities/OI-000001/dossiers", {}
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(generated["dossier_id"], "ED-000001")
+        self.assertTrue(generated["reused"])
+
+        status, page, _ = self.request(
+            "GET",
+            "/opportunities/OI-000001/dossiers/ED-000001",
+            headers={"Accept": "text/html"},
+        )
+        self.assertEqual(status, 200)
+        self.assertIn("Download HTML", page)
+        self.assertIn("Download PDF", page)
+        self.assertIn("Download JSON", page)
+        self.assertIn("Traceability", page)
+
+        for format_name, media_type, prefix in (
+            ("html", "text/html", b"<!doctype html>"),
+            ("pdf", "application/pdf", b"%PDF-1.4"),
+            ("json", "application/json", b"{"),
+        ):
+            status, payload, headers = self.request_raw(
+                "GET",
+                f"/opportunities/OI-000001/dossiers/ED-000001/{format_name}",
+            )
+            self.assertEqual(status, 200)
+            self.assertIn(media_type, headers["Content-Type"])
+            self.assertTrue(payload.lstrip().startswith(prefix))
+            self.assertIn(
+                f'filename="ED-000001.{format_name}"',
+                headers["Content-Disposition"],
+            )
+            if format_name == "pdf":
+                self.assertIn(b"xref", payload)
+                self.assertTrue(payload.endswith(b"%%EOF\n"))
+            if format_name == "json":
+                self.assertEqual(json.loads(payload)["dossier_id"], "ED-000001")
+
+        status, replay, _ = self.request(
+            "POST",
+            "/opportunities/OI-000001/dossiers/ED-000001/replay",
+            {},
+        )
+        self.assertEqual(status, 200)
+        self.assertTrue(replay["match"])
+        self.assertEqual(
+            replay["artifact_matches"], {"html": True, "json": True, "pdf": True}
+        )
+        actions = [item["action"] for item in self.repository.list_audit(50)]
+        self.assertIn("dossier.generated", actions)
+        self.assertIn("dossier.replayed", actions)
+
+    def test_dossier_is_deterministic_idempotent_and_lifecycle_derived(self):
+        first = ensure_reference_records(self.service)["dossier"]
+        first_artifacts = {
+            kind: self.service.dossier_artifact(
+                "OI-000001", first["dossier_id"], kind
+            )[0]
+            for kind in ("html", "pdf", "json")
+        }
+        second = self.service.generate_dossier("OI-000001", "determinism-test")
+        self.assertEqual(second["dossier_id"], first["dossier_id"])
+        self.assertEqual(second["input_hash"], first["input_hash"])
+        self.assertEqual(second["replay_hash"], first["replay_hash"])
+        self.assertTrue(second["reused"])
+        for kind, expected in first_artifacts.items():
+            self.assertEqual(
+                self.service.dossier_artifact("OI-000001", "ED-000001", kind)[0],
+                expected,
+            )
+        dossier_step = next(
+            item
+            for item in self.service.get_opportunity("OI-000001")["workflow"]
+            if item["key"] == "dossier"
+        )
+        self.assertEqual(dossier_step["state"], "complete")
+
+        opportunity = self.repository.get_opportunity("OI-000001")
+        self.service.edit_opportunity(
+            "OI-000001",
+            {"description": opportunity["description"] + " Revised."},
+            "staleness-test",
+            opportunity["revision"],
+        )
+        stale = self.service.get_dossier("OI-000001", "ED-000001")
+        self.assertTrue(stale["stale"])
+        dossier_step = next(
+            item
+            for item in self.service.get_opportunity("OI-000001")["workflow"]
+            if item["key"] == "dossier"
+        )
+        self.assertEqual(dossier_step["state"], "pending")
+        self.assertTrue(
+            self.service.replay_dossier(
+                "OI-000001", "ED-000001", "staleness-test"
+            )["match"]
+        )
+
+    def test_dossier_preserves_kr_000002_to_as_000001_provenance(self):
+        ensure_reference_opportunity(self.service)
+        ensure_reference_evidence(self.service)
+        first_review = self.service.run_knowledge_review(
+            "OI-000001", "AKM-GEO-FL-001", "provenance-test"
+        )
+        self.assertEqual(first_review["review_id"], "KR-000001")
+        current_review = self.service.supersede_knowledge_review(
+            "OI-000001", "KR-000001", "provenance-test"
+        )
+        self.assertEqual(current_review["review_id"], "KR-000002")
+        assessment = self.service.run_spatial_assessment(
+            "OI-000001", "provenance-test", "KR-000002"
+        )
+        self.assertEqual(assessment["assessment_id"], "AS-000001")
+        dossier = self.service.generate_dossier("OI-000001", "provenance-test")
+        self.assertEqual(dossier["dossier_id"], "ED-000001")
+        self.assertEqual(
+            dossier["document"]["traceability"]["chain"],
+            ["OI-000001", "EV-000001", "KR-000002", "AS-000001", "ED-000001"],
+        )
+
+    def test_dossier_persists_and_replays_after_restart(self):
+        persistence_db = Path(self.tempdir.name) / "dossier-persistence.db"
+        first_repository = Repository(persistence_db)
+        first_service = AnchorIntelService(
+            first_repository,
+            evidence_storage_dir=Path(self.tempdir.name) / "dossier-files",
+        )
+        created = ensure_reference_records(first_service)["dossier"]
+        pdf_before = first_service.dossier_artifact(
+            "OI-000001", "ED-000001", "pdf"
+        )[0]
+        first_repository.close()
+
+        second_repository = Repository(persistence_db)
+        try:
+            second_service = AnchorIntelService(
+                second_repository,
+                evidence_storage_dir=Path(self.tempdir.name) / "dossier-files",
+            )
+            persisted = second_service.get_dossier("OI-000001", "ED-000001")
+            self.assertEqual(persisted["replay_hash"], created["replay_hash"])
+            self.assertEqual(
+                second_service.dossier_artifact(
+                    "OI-000001", "ED-000001", "pdf"
+                )[0],
+                pdf_before,
+            )
+            self.assertTrue(
+                second_service.replay_dossier(
+                    "OI-000001", "ED-000001", "restart-test"
+                )["match"]
+            )
+        finally:
+            second_repository.close()
+
+    def test_dossier_rejects_incomplete_lifecycle(self):
+        ensure_reference_opportunity(self.service)
+        status, error, _ = self.request(
+            "POST", "/opportunities/OI-000001/dossiers", {}
+        )
+        self.assertEqual(status, 409)
+        self.assertEqual(error["error"]["code"], "dossier_not_ready")
+
+
+if __name__ == "__main__":
+    unittest.main()

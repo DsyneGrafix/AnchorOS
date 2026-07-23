@@ -1,0 +1,56 @@
+{
+  "service_id": "AOS-SVC-ANCHORINTEL-API",
+  "name": "AnchorIntel API",
+  "version": "0.6.0",
+  "platform": "AnchorOS",
+  "framework": "AnchorIntel",
+  "entrypoint": "anchorintel_api.anchoros:AnchorIntelAnchorOSService",
+  "capabilities": [
+    "opportunity.lifecycle.manage",
+    "evidence.manage",
+    "evidence.file.store",
+    "evidence.file.hash.sha256",
+    "evidence.classify",
+    "evidence.verify",
+    "knowledge.module.list",
+    "knowledge.module.retrieve",
+    "knowledge.review.run",
+    "knowledge.review.trace",
+    "knowledge.review.supersede",
+    "knowledge.review.staleness",
+    "spatial.assessment.run",
+    "spatial.assessment.replay",
+    "spatial.assessment.trace",
+    "spatial.assessment.staleness",
+    "assessment.report.json",
+    "assessment.report.markdown",
+    "dossier.generate",
+    "dossier.export",
+    "dossier.replay",
+    "archive.create",
+    "archive.download",
+    "archive.replay",
+    "opportunity.archive.read_only",
+    "opportunity.review.due",
+    "opportunity.revalidate",
+    "audit.read"
+  ],
+  "dependencies": [
+    "spatial-opportunity-engine>=0.1.0"
+  ],
+  "persistence": {
+    "type": "sqlite",
+    "default_path": "data/anchorintel.db"
+  },
+  "network": {
+    "default_host": "127.0.0.1",
+    "default_port": 8080,
+    "api_prefix": "/v1"
+  },
+  "lifecycle": {
+    "register": "register",
+    "start": "start",
+    "stop": "stop",
+    "health": "health"
+  }
+}
