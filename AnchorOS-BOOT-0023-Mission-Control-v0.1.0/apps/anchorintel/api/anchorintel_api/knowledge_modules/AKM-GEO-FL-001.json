@@ -1,0 +1,60 @@
+{
+  "module_id": "AKM-GEO-FL-001",
+  "name": "Florida Infrastructure Geographic Context",
+  "version": "1.0",
+  "purpose": "Apply bounded Florida geographic and infrastructure-context questions to an opportunity and its active evidence.",
+  "scope": "Florida geographic, infrastructure, environmental, regulatory-context, and evidence-review questions for infrastructure opportunity analysis.",
+  "domain": "Geographic and infrastructure context",
+  "jurisdiction": "Florida",
+  "publisher": "Sirius Logic Systems",
+  "description": "Provides bounded Florida geographic, infrastructure, environmental, regulatory-context, and evidence-review questions for infrastructure opportunity analysis.",
+  "applicability_criteria": [
+    "Opportunity geography identifies Florida or active evidence contains Florida context.",
+    "Opportunity concerns an identified infrastructure class."
+  ],
+  "required_evidence_categories": [
+    "Geographic evidence",
+    "Service-territory evidence",
+    "Environmental context",
+    "Regulatory dependencies",
+    "Ownership evidence"
+  ],
+  "review_questions": [
+    {"question_id": "FL-Q01", "question": "Is the opportunity located in Florida?"},
+    {"question_id": "FL-Q02", "question": "Is the infrastructure class identified?"},
+    {"question_id": "FL-Q03", "question": "Is the organization identified?"},
+    {"question_id": "FL-Q04", "question": "Is supporting geographic evidence present?"},
+    {"question_id": "FL-Q05", "question": "Is the relevant utility or service territory established by evidence?"},
+    {"question_id": "FL-Q06", "question": "Are environmental exposure factors identified?"},
+    {"question_id": "FL-Q07", "question": "Are permitting or regulatory dependencies identified?"},
+    {"question_id": "FL-Q08", "question": "Are infrastructure ownership assumptions documented?"},
+    {"question_id": "FL-Q09", "question": "Are material unknowns recorded?"},
+    {"question_id": "FL-Q10", "question": "Are source dates and confidence levels available?"},
+    {"question_id": "FL-Q11", "question": "Is any evidence stale, questioned, archived, or unsupported?"}
+  ],
+  "assumptions": [
+    "Opportunity metadata is analyst-supplied context rather than independent proof.",
+    "Active evidence may support context without establishing legal, regulatory, engineering, environmental, investment, ownership, service-territory, procurement, or endorsement conclusions."
+  ],
+  "known_limitations": [
+    "The module uses local deterministic rules and does not perform internet research.",
+    "The module does not determine legal or regulatory applicability.",
+    "The module does not independently verify evidence or source truth.",
+    "The module does not make a pursue, monitor, hold, or reject determination.",
+    "Currency is bounded by dated persisted evidence and the module review date."
+  ],
+  "output_schema": {
+    "findings": "array",
+    "assumptions": "array",
+    "unknowns": "array",
+    "risks": "array",
+    "missing_evidence": "array",
+    "confidence": "Unknown|Low|Moderate|High|Verified",
+    "consumed_evidence_ids": "array"
+  },
+  "effective_date": "2026-07-19",
+  "review_date": "2027-01-19",
+  "evidence_stale_after_days": 365,
+  "status": "Active",
+  "integrity_hash": "fe3c382e5d511b11c10cabad2753f9f6f8a28114a7e47d2d7f7ae1365ffd1062"
+}
