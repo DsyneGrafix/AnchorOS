@@ -1,0 +1,299 @@
+{
+  "assessment_date": "2026-07-18",
+  "assumptions": [
+    {
+      "claim": "AI data centers are a material driver of Florida electric-utility infrastructure demand for this opportunity.",
+      "evidence_id": "E-001",
+      "geography": "Florida",
+      "material": true,
+      "notes": "The profile asserts the driver but provides no dated filing, plan, announcement, load forecast, or project record.",
+      "retrieved_date": "2026-07-18",
+      "source": "Opportunity Profile.docx",
+      "source_date": "",
+      "staleness_risk": "",
+      "state": "A"
+    },
+    {
+      "claim": "Baseload growth, generation expansion, and water constraints create actionable infrastructure needs.",
+      "evidence_id": "E-002",
+      "geography": "Florida",
+      "material": true,
+      "notes": "No measured load, capacity, water, location, schedule, or consequence evidence is attached.",
+      "retrieved_date": "2026-07-18",
+      "source": "Opportunity Profile.docx",
+      "source_date": "",
+      "staleness_risk": "",
+      "state": "A"
+    },
+    {
+      "claim": "Florida Power & Light, Duke Energy Florida, and JEA are reachable target utilities for the opportunity.",
+      "evidence_id": "E-003",
+      "geography": "Florida",
+      "material": true,
+      "notes": "The entities are named, but no sponsor, buyer, procurement authority, budget owner, or active requirement is identified.",
+      "retrieved_date": "2026-07-18",
+      "source": "Opportunity Profile.docx",
+      "source_date": "",
+      "staleness_risk": "",
+      "state": "A"
+    },
+    {
+      "claim": "Generation FEED, combined-cycle, nuclear, gas, 230/500 kV transmission, routing, substations, feeders, liquid cooling, direct-to-chip cooling, and HVAC are expected contract classes.",
+      "evidence_id": "E-005",
+      "geography": "Florida",
+      "material": true,
+      "notes": "The profile lists broad contract classes without tying them to a project, buyer, acquisition vehicle, technical requirement, or scope.",
+      "retrieved_date": "2026-07-18",
+      "source": "Opportunity Profile.docx",
+      "source_date": "",
+      "staleness_risk": "",
+      "state": "A"
+    },
+    {
+      "claim": "The opportunity has an 18\u201336 month actionable time horizon.",
+      "evidence_id": "E-006",
+      "geography": "Florida",
+      "material": true,
+      "notes": "No dated event, procurement milestone, regulatory schedule, or construction critical path supports the horizon.",
+      "retrieved_date": "2026-07-18",
+      "source": "Opportunity Profile.docx",
+      "source_date": "",
+      "staleness_risk": "",
+      "state": "A"
+    }
+  ],
+  "confidence": "Low",
+  "confidence_index": 0.357,
+  "dimensions": [
+    {
+      "evidence_refs": [
+        "E-001",
+        "E-002",
+        "E-007"
+      ],
+      "key": "problem_evidence",
+      "label": "Problem evidence and consequence",
+      "rationale": "The profile identifies plausible pressures, but it does not establish a measured infrastructure problem or observable consequence.",
+      "score": 1.5,
+      "weight": 15,
+      "weighted_points": 4.5
+    },
+    {
+      "evidence_refs": [
+        "E-003"
+      ],
+      "key": "authority_clarity",
+      "label": "Customer, actor, and authority clarity",
+      "rationale": "Three target utilities are named, but the sponsor, buyer, budget owner, procurement authority, and approving authority are unknown.",
+      "score": 2.5,
+      "weight": 15,
+      "weighted_points": 7.5
+    },
+    {
+      "evidence_refs": [
+        "E-002",
+        "E-005",
+        "E-006"
+      ],
+      "key": "technical_fit",
+      "label": "Technical and temporal fit",
+      "rationale": "Broad infrastructure and contract categories are listed, but no bounded project, site, load, system constraint, dependency, or solution pathway is defined.",
+      "score": 2.0,
+      "weight": 15,
+      "weighted_points": 6.0
+    },
+    {
+      "evidence_refs": [
+        "E-003",
+        "E-004",
+        "E-007"
+      ],
+      "key": "funding_path",
+      "label": "Funding and procurement path",
+      "rationale": "No budget, rate-case recovery path, procurement vehicle, solicitation, capital plan, customer payment mechanism, or eligible applicant is identified.",
+      "score": 1.0,
+      "weight": 15,
+      "weighted_points": 3.0
+    },
+    {
+      "evidence_refs": [
+        "E-004",
+        "E-007"
+      ],
+      "key": "strategic_alignment",
+      "label": "Strategic alignment",
+      "rationale": "The evolving evidence-list concept fits infrastructure opportunity intelligence, but the profile does not define a bounded AnchorFiber or Sirius Logic Systems delivery role.",
+      "score": 3.0,
+      "weight": 15,
+      "weighted_points": 9.0
+    },
+    {
+      "evidence_refs": [
+        "E-004",
+        "E-007"
+      ],
+      "key": "differentiated_advantage",
+      "label": "Differentiated advantage",
+      "rationale": "Continuous evidence maintenance could differentiate the intelligence workflow, but no buyer-relevant advantage or comparison with incumbent tools is demonstrated.",
+      "score": 2.0,
+      "weight": 10,
+      "weighted_points": 4.0
+    },
+    {
+      "evidence_refs": [
+        "E-003",
+        "E-005"
+      ],
+      "key": "delivery_readiness",
+      "label": "Delivery readiness",
+      "rationale": "No delivery team, utility relationship, licensed engineering partner, procurement path, data access, or phased work plan is identified.",
+      "score": 1.0,
+      "weight": 10,
+      "weighted_points": 2.0
+    },
+    {
+      "evidence_refs": [
+        "E-001",
+        "E-002",
+        "E-005",
+        "E-006",
+        "E-007"
+      ],
+      "key": "risk_position",
+      "label": "Risk and uncertainty position",
+      "rationale": "The profile exposes useful research categories, but decisive claims remain assumptions or unknowns and the scope spans several specialized infrastructure domains.",
+      "score": 1.5,
+      "weight": 5,
+      "weighted_points": 1.5
+    }
+  ],
+  "engine_version": "0.1.0",
+  "evidence_counts": {
+    "A": 5,
+    "D": 0,
+    "S": 1,
+    "U": 1,
+    "V": 0
+  },
+  "facts": [],
+  "fatal_constraints": [],
+  "gates": {
+    "A1": {
+      "evidence_refs": [
+        "E-003"
+      ],
+      "rationale": "Target organizations are named without a reachable sponsor, buyer, budget owner, procurement authority, or approver.",
+      "status": "provisional"
+    },
+    "A2": {
+      "evidence_refs": [
+        "E-004",
+        "E-005",
+        "E-007"
+      ],
+      "rationale": "The evidence-intelligence concept is aligned, but the company's bounded role, advantage, partners, and commercial offer remain undefined.",
+      "status": "provisional"
+    },
+    "I": {
+      "evidence_refs": [
+        "E-003",
+        "E-004",
+        "E-007"
+      ],
+      "rationale": "No investment, funding, procurement, or implementation pathway is supplied.",
+      "status": "fail"
+    },
+    "L": {
+      "evidence_refs": [],
+      "rationale": "Owner, next action, resource ceiling, and review date are defined.",
+      "status": "pass"
+    },
+    "P": {
+      "evidence_refs": [
+        "E-001",
+        "E-002",
+        "E-007"
+      ],
+      "rationale": "Plausible pressure categories are named, but no measured condition, affected asset, or consequence is evidenced.",
+      "status": "provisional"
+    },
+    "S": {
+      "evidence_refs": [
+        "E-001",
+        "E-003",
+        "E-004"
+      ],
+      "rationale": "The market, sector, opportunity type, regulatory model, and initial target utilities are bounded at a lead-profile level.",
+      "status": "pass"
+    },
+    "T": {
+      "evidence_refs": [
+        "E-002",
+        "E-005",
+        "E-006"
+      ],
+      "rationale": "Potential work domains are listed, but no bounded technical requirement, project, site, dependency map, or delivery schedule is established.",
+      "status": "provisional"
+    }
+  },
+  "inferences": [
+    {
+      "claim": "FPSC plans, Determination of Need proceedings, IRP updates, and hyperscaler announcements will expose relevant trigger events.",
+      "evidence_id": "E-004",
+      "geography": "Florida",
+      "material": true,
+      "notes": "These are plausible source and trigger categories, but no specific current trigger record is cited.",
+      "retrieved_date": "2026-07-18",
+      "source": "Opportunity Profile.docx",
+      "source_date": "",
+      "staleness_risk": "",
+      "state": "S"
+    }
+  ],
+  "known_limitations": [
+    "The source document is a concise lead profile, not an evidence packet.",
+    "The document's High confidence label is not traceable to specific dated evidence.",
+    "No current utility filing, load forecast, regulatory docket, capital plan, hyperscaler announcement, solicitation, or project record is attached.",
+    "The profile combines generation, transmission, distribution, and mechanical scopes that may require separate opportunity records.",
+    "No bounded AnchorFiber, AnchorIntel, or Sirius Logic Systems commercial role is defined.",
+    "No engineering, regulatory, procurement, financial, or market conclusion is verified by this assessment."
+  ],
+  "lifecycle": {
+    "next_action": "Build a dated evidence packet for one target utility and one bounded project or trigger before authorizing outreach or proposal work.",
+    "owner": "AnchorIntel opportunity lead",
+    "resource_ceiling": "Desk research only; no proposal, partner commitment, customer outreach, or engineering spend authorized",
+    "revalidation_triggers": [
+      "A specific FPSC filing or regulatory docket is identified",
+      "A target utility publishes a quantified load or capital requirement",
+      "A hyperscaler announces a Florida site with utility or schedule detail",
+      "A solicitation, supplier event, or procurement vehicle is confirmed",
+      "A bounded Sirius Logic Systems role and delivery partner are defined"
+    ],
+    "review_date": "2026-08-01"
+  },
+  "methodology": "SIO-001 v0.1",
+  "opportunity_id": "OPP-FL-0001",
+  "provisional": true,
+  "recommendation": "Hold",
+  "recommendation_reason": "Mandatory gate failure (I) overrides the numeric score.",
+  "score": 37.5,
+  "title": "Florida Electric Utility AI Infrastructure Opportunity",
+  "unknowns_or_disputes": [
+    {
+      "claim": "Current authoritative evidence from FPSC filings, utility plans, regulatory dockets, earnings calls, and hyperscaler announcements supports the opportunity.",
+      "evidence_id": "E-007",
+      "geography": "Florida",
+      "material": true,
+      "notes": "The profile names source categories, but no specific evidence artifacts are included.",
+      "retrieved_date": "2026-07-18",
+      "source": "",
+      "source_date": "",
+      "staleness_risk": "",
+      "state": "U"
+    }
+  ],
+  "warnings": [
+    "Low evidence confidence: recommendation must be treated as provisional.",
+    "One or more mandatory gates remain provisional."
+  ]
+}

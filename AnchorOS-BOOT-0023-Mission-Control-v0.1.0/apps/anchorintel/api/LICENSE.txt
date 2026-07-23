@@ -1,0 +1,5 @@
+Copyright (c) 2026 Sirius Logic Systems. All rights reserved.
+
+This software and its accompanying documentation are proprietary and confidential.
+No license to copy, modify, distribute, publish, sublicense, or use this software
+outside an authorized Sirius Logic Systems evaluation or deployment is granted.

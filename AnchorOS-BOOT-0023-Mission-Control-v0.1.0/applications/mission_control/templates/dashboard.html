@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AnchorOS Mission Control</title>
+  <link rel="stylesheet" href="/static/mission-control.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="/static/anchor-mark.svg" alt="AnchorOS">
+      <div><strong>AnchorOS</strong><span>MISSION CONTROL</span></div>
+    </div>
+    <div class="live"><i></i><span id="connection">LIVE</span></div>
+  </header>
+  <main>
+    <section class="hero">
+      <div><p class="eyebrow">OPERATIONAL PLATFORM FOR INTELLIGENT SYSTEMS</p><h1>Platform Command Surface</h1><p id="identity">Loading platform identity…</p></div>
+      <div class="status-orb"><span id="platform-status">BOOTING</span><small>PLATFORM STATUS</small></div>
+    </section>
+    <section class="metrics">
+      <article><span>Services</span><strong id="service-count">—</strong></article>
+      <article><span>Frameworks</span><strong id="framework-count">—</strong></article>
+      <article><span>Applications</span><strong id="application-count">—</strong></article>
+      <article><span>Audit Records</span><strong id="audit-count">—</strong></article>
+    </section>
+    <section class="grid">
+      <article class="panel wide"><header><h2>Platform Inventory</h2><span id="boot-id">BOOT —</span></header><div class="inventory"><div><h3>Services</h3><ul id="services"></ul></div><div><h3>Frameworks</h3><ul id="frameworks"></ul></div><div><h3>Applications</h3><ul id="applications"></ul></div></div></article>
+      <article class="panel"><header><h2>Boot Pipeline</h2><span class="chip" id="pipeline-chip">WAITING</span></header><div class="pipeline"><strong id="pipeline-score">— / —</strong><span>verified stages</span></div></article>
+      <article class="panel"><header><h2>Health</h2><span class="chip" id="health-chip">CHECKING</span></header><div id="health-list" class="health-list"></div></article>
+      <article class="panel full"><header><h2>Operational Event Stream</h2><span>Most recent first</span></header><div id="events" class="events"></div></article>
+    </section>
+  </main>
+  <footer><span>Sirius Logic Systems</span><span id="clock"></span></footer>
+  <script src="/static/mission-control.js"></script>
+</body>
+</html>
