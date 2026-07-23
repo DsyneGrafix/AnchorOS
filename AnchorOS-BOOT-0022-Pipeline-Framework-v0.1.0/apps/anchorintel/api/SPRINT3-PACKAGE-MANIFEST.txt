@@ -1,0 +1,59 @@
+AnchorIntel OI-000001 Sprint 3 Package Manifest
+Generated: 2026-07-19
+Package root: apps/anchorintel/api
+Release: anchorintel-api 0.3.0
+Members: 36 (35 hashed members plus this manifest)
+
+Boundary
+--------
+This database-free source overlay excludes SQLite DB/WAL/SHM files, uploaded
+evidence, backup/failed-install directories, Python caches, temporary data,
+customer data, and the unchanged sibling S.P.A.T.I.A.L. engine. The manifest
+does not list its own recursive digest. The ZIP SHA-256 is distributed alongside
+the package and in the delivery message.
+
+Verification summary
+--------------------
+AnchorIntel API: 22 tests, OK
+S.P.A.T.I.A.L. engine regression: 8 tests, OK
+Python compilation: PASS
+Launcher shell syntax: PASS
+Reference seed smoke test: KR-000001 / Completed / Moderate / lifecycle current
+Independent extracted-package exclusion scan: PASS
+
+SHA-256  PATH
+3972f0e29af7c9a7ef8cda53192437e1772c89d86c1df0d47248444ed2c0ba94  apps/anchorintel/api/.gitignore
+adadc9b0fbd540521c2d4ae12baadf1d6ff10d2cf144feddf7ce09f97fbef234  apps/anchorintel/api/AKM-GEO-FL-001.md
+c799a141bca05fc6f902f43370901b1dcf9f7dbb5f9adf8259da9285b280c698  apps/anchorintel/api/ARCHITECTURE.md
+86358757682efeef146249a764663d31ec2fd03a8b13d5d70d56075b7707f667  apps/anchorintel/api/BOOT-0020-IMPLEMENTATION-NOTES.md
+b54873ef6b6e4491c05a7088271622ab642f5217d80109882d185ce024a16bac  apps/anchorintel/api/CHANGES-SPRINT2.md
+acb3408839f67696b11b866f7723d416e6c51fa94a9e0759ee725dce6bd6b259  apps/anchorintel/api/CHANGES-SPRINT3.md
+09c55020c3d2a09fc52f376971bdb0ccfa406d9dbf706bc2885447a18728148f  apps/anchorintel/api/INSTALL-OI-000001.md
+aced05bda463327bd05d23d87d4ed0da2e1abd13929632f811920dbad7bf7832  apps/anchorintel/api/INSTALL-SPRINT2.md
+f0d30be76c3b0e602a2a3c1b88bae9d1def6c9f60783f2e8730aab16568928a3  apps/anchorintel/api/INSTALL-SPRINT3.md
+0b8f054f8e7e148f6bc8ef8014c9713cf935ac1f362f5d3c78e478c6c5b1b031  apps/anchorintel/api/KNOWLEDGE-MODULE-FORMAT.md
+112bfed5d870f1d5ab1b4a791951659cc0a11ec8ad062c9d53d2bb9e61e2cb49  apps/anchorintel/api/LICENSE.txt
+c8717e6af0043f8372baf40afafcbac3296de80027b9d409532297a94ce37584  apps/anchorintel/api/README.md
+3f37d83edeb6dc36437e2abd7ec705a47f3714c3a71a21c090ae9c2704b12a78  apps/anchorintel/api/SPRINT2-PACKAGE-MANIFEST.txt
+7c0ff2db22a5b152ea69ecb44c326394b25d497da20eeb538374e67face92b67  apps/anchorintel/api/SPRINT2-VERIFICATION-CHECKLIST.md
+fbc6f7d4c1dce07a3fe14f19204d496a18a1a78c932e338a77519477245d8c5a  apps/anchorintel/api/SPRINT3-VERIFICATION-CHECKLIST.md
+5fb9e2e3ab0bb03c56282a22cd687f1ff728621e826eb555a574d409b6f11b83  apps/anchorintel/api/VERIFICATION.md
+03d8b0f6dabdfec5c838af334f27558d00ecb5663d94976237238b4c435a6852  apps/anchorintel/api/anchorintel_api/__init__.py
+2065c1f723883a5304abc8926e22e9c0ef9ccb83a94f29b702f579aa8b46b708  apps/anchorintel/api/anchorintel_api/__main__.py
+e42f0abbc058210475351f40f0498bea184dc313a8389a030d4ba45cb5d26eaf  apps/anchorintel/api/anchorintel_api/anchoros.py
+6d899a2ed668f4b0d069cc8afd06660eff690308081dff5d039955cb3ac87ed0  apps/anchorintel/api/anchorintel_api/app.py
+b524aaf924edd4f3ea21f3ee2a30ef23cbdb5079cea9be4a988d66ca5dec6f3f  apps/anchorintel/api/anchorintel_api/errors.py
+b3435bfb29ce2dd71a10bede685f6896eeaf03339037122fb38db267c6b5d607  apps/anchorintel/api/anchorintel_api/knowledge.py
+e07a13a5cf550a82ba8cd090aa8cc0bea8cfc76b85003314aa298134dc562379  apps/anchorintel/api/anchorintel_api/knowledge_modules/AKM-GEO-FL-001.json
+f03c276e008a07c9b18fcd2df506f9f79b9720740e39b642f1b58403155b7efd  apps/anchorintel/api/anchorintel_api/openapi.py
+a0671ba8d8010ec8f5acf18268fea4ca8ddc52a903de71ceec8afd8deba95858  apps/anchorintel/api/anchorintel_api/reference.py
+2e17feea22213d00fd9333ecfbc16fc706fdd6163bfc0a9d22e8d70d59613c86  apps/anchorintel/api/anchorintel_api/repository.py
+b31bb75a6c3d6f1079685161fea5e98256dd9b8e8899c26d820ac9a74faf40f6  apps/anchorintel/api/anchorintel_api/server.py
+077827a139b9f1e0816f8c1ed63bd8d4d5aba9964c7dadb3cb77b66c4652ef79  apps/anchorintel/api/anchorintel_api/service.py
+c15163da8971066331587d52fbb2e84f1b4bf79e2d3a3f5ae90084691acb6b80  apps/anchorintel/api/anchorintel_api/web.py
+02f8232a4c84e17dc8732e5c0e3b1b799cb6355de561e4586f6f5b3778ffe3fc  apps/anchorintel/api/anchoros-service.json
+240a3e0d37d2e86b614063f5347eb02d4f99ca6c254de6b82871ff8d95532a7d  apps/anchorintel/api/data/evidence-files/.gitignore
+0880c4a076aba4f6ba10b2e4ef7d5edab7c8e8ce3824966155b32911847d46c7  apps/anchorintel/api/examples/load_and_assess.py
+81f7125f0197bec4fd1ea8e95f6f3d6b8783ebac74201a96b0068033d24d7cfe  apps/anchorintel/api/pyproject.toml
+af29d96cbdd00a859434763b72fc09b50041d8739e140c8dd5ef28d2d0635fff  apps/anchorintel/api/start-anchorintel.sh
+48fe91d3bfe22b9605335b00fb4c6bc48b2c49ec9a8f9fceb50d4ba2a78376ba  apps/anchorintel/api/tests/test_api.py
