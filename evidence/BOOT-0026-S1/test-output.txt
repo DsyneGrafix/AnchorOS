@@ -1,0 +1,153 @@
+test_bootstrap_success (infrastructure_registry.test_foundation.InfrastructureRegistryFoundationTests.test_bootstrap_success) ... ok
+test_canonical_entity_persistence (infrastructure_registry.test_foundation.InfrastructureRegistryFoundationTests.test_canonical_entity_persistence) ... ok
+test_discoverable_service_lifecycle (infrastructure_registry.test_foundation.InfrastructureRegistryFoundationTests.test_discoverable_service_lifecycle) ... ok
+test_foreign_key_integrity (infrastructure_registry.test_foundation.InfrastructureRegistryFoundationTests.test_foreign_key_integrity) ... ok
+test_model_defaults (infrastructure_registry.test_foundation.InfrastructureRegistryFoundationTests.test_model_defaults) ... ok
+test_repository_crud (infrastructure_registry.test_foundation.InfrastructureRegistryFoundationTests.test_repository_crud) ... ok
+test_schema_creation_and_verification (infrastructure_registry.test_foundation.InfrastructureRegistryFoundationTests.test_schema_creation_and_verification) ... ok
+test_archived_organization_cannot_return_to_service (infrastructure_registry.test_organization_service.OrganizationServiceTests.test_archived_organization_cannot_return_to_service) ... ok
+test_create_get_and_list (infrastructure_registry.test_organization_service.OrganizationServiceTests.test_create_get_and_list) ... ok
+test_rejects_blank_name (infrastructure_registry.test_organization_service.OrganizationServiceTests.test_rejects_blank_name) ... ok
+test_rejects_duplicate_external_identifier_case_insensitively (infrastructure_registry.test_organization_service.OrganizationServiceTests.test_rejects_duplicate_external_identifier_case_insensitively) ... /mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a91e6200>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a91e67a0>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a91e6020>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a91e63e0>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a91e6890>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a91e6980>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a91e6a70>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a91e6b60>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a91e6c50>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a91e6d40>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a91e6e30>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a91e6f20>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a91e7010>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a91e7100>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a91e71f0>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a91e72e0>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a91e73d0>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a91e74c0>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a91e75b0>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a91e76a0>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a91e7790>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a91e7880>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a91e7970>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a91e7a60>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a91e7b50>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a91e7c40>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a91e7d30>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a91e7e20>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a91e7f10>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a908c040>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a908c130>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a908c220>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a908c310>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a908c400>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a908c4f0>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a908c5e0>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a908c6d0>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a908c8b0>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a908ca90>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a908cb80>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a908cc70>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a908cd60>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+/mnt/data/aos_sprint1/AnchorOS/core/infrastructure_registry/database.py:122: ResourceWarning: unclosed database in <sqlite3.Connection object at 0x7ff4a908c7c0>
+  connection.execute(
+ResourceWarning: Enable tracemalloc to get the object allocation traceback
+ok
+test_rejects_duplicate_name_case_insensitively (infrastructure_registry.test_organization_service.OrganizationServiceTests.test_rejects_duplicate_name_case_insensitively) ... ok
+test_rejects_invalid_lifecycle_transition (infrastructure_registry.test_organization_service.OrganizationServiceTests.test_rejects_invalid_lifecycle_transition) ... ok
+test_rename_updates_version_and_preserves_identity (infrastructure_registry.test_organization_service.OrganizationServiceTests.test_rename_updates_version_and_preserves_identity) ... ok
+test_valid_lifecycle_transitions (infrastructure_registry.test_organization_service.OrganizationServiceTests.test_valid_lifecycle_transitions) ... ok
+
+----------------------------------------------------------------------
+Ran 15 tests in 0.406s
+
+OK
+✓ Database Connected: Infrastructure Registry
+✓ Schema Verified: Infrastructure Registry
+✓ Repository Initialized: Infrastructure Registry
+✓ Registry Status: ONLINE

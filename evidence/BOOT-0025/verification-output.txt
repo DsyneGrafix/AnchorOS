@@ -1,0 +1,17 @@
+==========================================================
+AnchorOS BOOT-0025
+Infrastructure Registry — Phase 1 Foundation
+==========================================================
+Initializing registry...
+PASS: Database connection
+PASS: Schema verification
+PASS: Repository initialization
+PASS: Organization CRUD
+PASS: Facility CRUD
+PASS: Asset Type CRUD
+PASS: Asset CRUD
+PASS: Relationship CRUD
+PASS: Registry online
+----------------------------------------------------------
+Registry Status: ONLINE
+BOOT-0025 Phase 1 Verification: PASS

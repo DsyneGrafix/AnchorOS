@@ -1,0 +1,16 @@
+INFO:anchoros.infrastructure_registry:Starting Infrastructure Registry
+INFO:anchoros.infrastructure_registry:Database connected
+INFO:anchoros.infrastructure_registry:Schema verified
+INFO:anchoros.infrastructure_registry:Registry initialized
+INFO:anchoros.infrastructure_registry:Registry shutdown
+============================================
+AnchorOS BOOT-0025
+Infrastructure Registry — Phase 1
+============================================
+Initializing registry...
+Connecting database...
+Creating schema...
+Schema verification: PASS
+Repository CRUD verification: PASS
+Registry Status: ONLINE
+BOOT-0025 Phase 1 Verification: PASS

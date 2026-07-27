@@ -1,0 +1,16 @@
+test_all_phase_one_entities_persist (infrastructure_registry.test_foundation.InfrastructureRegistryFoundationTests.test_all_phase_one_entities_persist) ... ok
+test_bootstrap_reports_online (infrastructure_registry.test_foundation.InfrastructureRegistryFoundationTests.test_bootstrap_reports_online) ... INFO:anchoros.infrastructure_registry:Starting Infrastructure Registry
+INFO:anchoros.infrastructure_registry:Database connected
+INFO:anchoros.infrastructure_registry:Schema verified
+INFO:anchoros.infrastructure_registry:Registry initialized
+INFO:anchoros.infrastructure_registry:Registry shutdown
+ok
+test_model_creation_uses_stable_uuid (infrastructure_registry.test_foundation.InfrastructureRegistryFoundationTests.test_model_creation_uses_stable_uuid) ... ok
+test_referential_integrity_is_enforced (infrastructure_registry.test_foundation.InfrastructureRegistryFoundationTests.test_referential_integrity_is_enforced) ... ok
+test_repository_crud (infrastructure_registry.test_foundation.InfrastructureRegistryFoundationTests.test_repository_crud) ... ok
+test_schema_creation_and_verification (infrastructure_registry.test_foundation.InfrastructureRegistryFoundationTests.test_schema_creation_and_verification) ... ok
+
+----------------------------------------------------------------------
+Ran 6 tests in 0.110s
+
+OK
