@@ -1,5 +1,6 @@
 """Managed service layer for the AOS-140 Infrastructure Registry."""
 
+from core.infrastructure_registry.services.facility_service import FacilityService
 from core.infrastructure_registry.services.organization_service import OrganizationService
 
-__all__ = ["OrganizationService"]
+__all__ = ["FacilityService", "OrganizationService"]

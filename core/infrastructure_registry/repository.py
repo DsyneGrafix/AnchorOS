@@ -76,6 +76,21 @@ class InfrastructureRegistryRepository:
             ).fetchall()
         return [self._deserialize(entity_type, row) for row in rows]
 
+    def list_facilities_by_organization(
+        self, organization_id: str
+    ) -> list[Facility]:
+        """Return persisted facilities belonging to one organization."""
+        with self.database.connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT * FROM facilities
+                WHERE organization_id = ?
+                ORDER BY created_at, id
+                """,
+                (organization_id,),
+            ).fetchall()
+        return [self._deserialize(Facility, row) for row in rows]
+
     def update(self, entity: EntityT) -> EntityT:
         table = self._table_for(type(entity))
         current = self.require(type(entity), entity.id)

@@ -7,7 +7,7 @@ VERSION = "0.1.0 Alpha"
 CODENAME = "Foundation"
 STAGE = "Ember"
 
-BOOT = "0026"
+BOOT = "0027"
 BUILD = "20260716.001"
 
 COMPANY = "Sirius Logic Systems"
