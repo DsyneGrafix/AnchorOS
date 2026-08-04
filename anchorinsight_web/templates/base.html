@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}AnchorInsight{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('dashboard') }}">
+      <span class="brand-mark">⚓</span>
+      <span><strong>Anchor</strong><em>Insight</em></span>
+    </a>
+    <nav>
+      <a href="{{ url_for('dashboard') }}">Dashboard</a>
+      <a href="{{ url_for('organizations') }}">Organizations</a>
+      <a href="{{ url_for('api_health') }}">Health</a>
+    </nav>
+  </header>
+  <main class="shell">
+    {% block content %}{% endblock %}
+  </main>
+  <footer>
+    <span>Strike true. Build clean. Verify everything.</span>
+    <span>AI augments judgment. It does not replace evidence.</span>
+  </footer>
+</body>
+</html>

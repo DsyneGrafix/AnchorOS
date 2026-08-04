@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}{{ profile.organization.display_name }} · AnchorInsight{% endblock %}
+{% block content %}
+<section class="profile-hero">
+  <div>
+    <span class="id">{{ profile.organization.cof_organization_id }}</span>
+    <h1>{{ profile.organization.display_name }}</h1>
+    <p>{{ profile.organization.sector or "Unclassified" }} · {{ profile.organization.role }} · {{ profile.organization.headquarters or "Location unavailable" }}</p>
+  </div>
+  <div class="hero-decision">
+    <span>Current Decision</span>
+    <strong>{{ profile.decision.decision }}</strong>
+    <small>{{ profile.decision.confidence }} confidence</small>
+  </div>
+</section>
+
+<section class="cci-panel">
+  <div>
+    <p class="eyebrow">Commercial Confidence Index</p>
+    <div class="cci-value">{{ "%.2f"|format(profile.commercial_confidence.score) if profile.commercial_confidence.score is not none else "—" }}</div>
+    <p>{{ profile.commercial_confidence.recommendation or "Complete the missing score components." }}</p>
+  </div>
+  <div class="next-action">
+    <span>Next justified action</span>
+    <strong>{{ profile.decision.next_action }}</strong>
+  </div>
+</section>
+
+<section class="score-grid">
+{% for tile in profile.score_tiles %}
+  <article class="score-tile">
+    <span>{{ tile.model }}</span>
+    <strong>{{ "%.2f"|format(tile.score) if tile.score is not none else "—" }}</strong>
+    <small>{{ tile.decision }}</small>
+  </article>
+{% endfor %}
+</section>
+
+<div class="two-column">
+  <section class="panel">
+    <div class="panel-head"><h2>Markets</h2><span>{{ profile.markets|length }}</span></div>
+    {% for market in profile.markets %}
+      <div class="list-item"><div><strong>{{ market.name }}</strong><small>{{ market.market_role or "Member" }}</small></div><span>{{ market.relevance }}</span></div>
+    {% else %}<p>No markets linked.</p>{% endfor %}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Evidence</h2><span>{{ profile.evidence.count }}</span></div>
+      {% for item in profile.evidence["items"][:5] %}
+      <div class="list-item"><div><strong>{{ item.assertion }}</strong><small>{{ item.source_title }}</small></div><span>{{ item.classification }}</span></div>
+    {% else %}<p>No evidence linked.</p>{% endfor %}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Open Actions</h2><span>{{ profile.actions.count }}</span></div>
+    {% for item in profile.actions["items"] %}
+      <div class="list-item"><div><strong>{{ item.description }}</strong><small>{{ item.owner or "Unassigned" }}</small></div><span>{{ item.priority }}</span></div>
+    {% else %}<p>No open actions.</p>{% endfor %}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Readiness</h2><span>{{ profile.readiness.percent }}%</span></div>
+    <p class="status-line">{{ profile.readiness.status }}</p>
+    {% if profile.readiness.missing %}
+      <ul>{% for item in profile.readiness.missing %}<li>{{ item|replace("_"," ")|title }}</li>{% endfor %}</ul>
+    {% else %}
+      <p>All profile readiness checks passed.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Data Quality</h2><span>{{ profile.data_quality.warning_count }}</span></div>
+    <p class="status-line">{{ profile.data_quality.status }}</p>
+    {% if profile.data_quality.warnings %}
+      <ul>{% for item in profile.data_quality.warnings %}<li>{{ item }}</li>{% endfor %}</ul>
+    {% else %}
+      <p>No current warnings.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Timeline</h2><span>{{ profile.timeline|length }}</span></div>
+    {% for item in profile.timeline[:5] %}
+      <div class="list-item"><div><strong>{{ item.event_type }}</strong><small>{{ item.reason or "" }}</small></div><span>{{ item.new_state }}</span></div>
+    {% else %}<p>No lifecycle events.</p>{% endfor %}
+  </section>
+</div>
+{% endblock %}

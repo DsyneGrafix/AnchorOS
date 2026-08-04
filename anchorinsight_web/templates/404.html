@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Not Found · AnchorInsight{% endblock %}
+{% block content %}
+<section class="empty-state">
+  <h1>Organization not found</h1>
+  <p>The requested profile is not present in the AnchorInsight Registry.</p>
+  <a class="button" href="{{ url_for('organizations') }}">Return to organizations</a>
+</section>
+{% endblock %}

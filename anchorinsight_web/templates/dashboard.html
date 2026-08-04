@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}AnchorInsight Dashboard{% endblock %}
+{% block content %}
+<section class="hero">
+  <div>
+    <p class="eyebrow">Commercial Intelligence Command Center</p>
+    <h1>Turn evidence into justified commercial action.</h1>
+    <p class="lede">A live view of organizations, confidence, priorities, and next actions.</p>
+  </div>
+</section>
+
+<section class="summary-grid">
+  <article class="metric"><span>Organizations</span><strong>{{ summary.organization_count }}</strong></article>
+  <article class="metric"><span>Pursue</span><strong>{{ summary.pursue_count }}</strong></article>
+  <article class="metric"><span>Validate</span><strong>{{ summary.validate_count }}</strong></article>
+  <article class="metric"><span>Open Actions</span><strong>{{ summary.open_action_count }}</strong></article>
+</section>
+
+<section class="section-head">
+  <div>
+    <p class="eyebrow">Priority organizations</p>
+    <h2>Current intelligence</h2>
+  </div>
+  <a class="button secondary" href="{{ url_for('organizations') }}">View all</a>
+</section>
+
+<div class="card-grid">
+{% for card in cards %}
+  <a class="org-card" href="{{ url_for('organization_profile', identifier=card.cof_organization_id) }}">
+    <div class="org-card-top">
+      <div>
+        <span class="id">{{ card.cof_organization_id }}</span>
+        <h3>{{ card.name }}</h3>
+        <p>{{ card.sector or "Unclassified" }} · {{ card.role }}</p>
+      </div>
+      <span class="decision {{ card.decision|lower }}">{{ card.decision }}</span>
+    </div>
+    <div class="score-row">
+      <div><span>CCI</span><strong>{{ "%.2f"|format(card.cci) if card.cci is not none else "—" }}</strong></div>
+      <div><span>Evidence</span><strong>{{ card.evidence_count }}</strong></div>
+      <div><span>Actions</span><strong>{{ card.open_actions }}</strong></div>
+    </div>
+    <p class="headline">{{ card.headline }}</p>
+  </a>
+{% else %}
+  <div class="empty-state">No organizations have been registered yet.</div>
+{% endfor %}
+</div>
+{% endblock %}

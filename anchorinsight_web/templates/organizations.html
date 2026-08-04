@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Organizations · AnchorInsight{% endblock %}
+{% block content %}
+<section class="section-head">
+  <div>
+    <p class="eyebrow">Registry</p>
+    <h1>Organizations</h1>
+  </div>
+</section>
+<form class="filters" method="get">
+  <input type="search" name="q" value="{{ query }}" placeholder="Search name, sector, or organization">
+  <select name="status">
+    <option value="">All statuses</option>
+    {% for value in ["Observed","Investigating","Validate","Monitor","Hold","Pursue","Reject","Archive"] %}
+      <option value="{{ value }}" {% if selected_status == value %}selected{% endif %}>{{ value }}</option>
+    {% endfor %}
+  </select>
+  <button class="button" type="submit">Filter</button>
+</form>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Organization</th><th>Sector</th><th>Decision</th><th>CCI</th><th>Readiness</th><th>Actions</th></tr></thead>
+  <tbody>
+  {% for card in cards %}
+    <tr>
+      <td><a href="{{ url_for('organization_profile', identifier=card.cof_organization_id) }}"><strong>{{ card.name }}</strong><br><span class="id">{{ card.cof_organization_id }}</span></a></td>
+      <td>{{ card.sector or "—" }}</td>
+      <td><span class="decision {{ card.decision|lower }}">{{ card.decision }}</span></td>
+      <td>{{ "%.2f"|format(card.cci) if card.cci is not none else "—" }}</td>
+      <td>{{ card.readiness }}</td>
+      <td>{{ card.open_actions }}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6">No matching organizations.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}
