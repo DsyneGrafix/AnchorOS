@@ -1,0 +1,62 @@
+{
+  "completed_at": "2026-08-05T17:13:34.420790+00:00",
+  "created_at": "2026-08-05T17:13:34.406818+00:00",
+  "evidence_policy": "human_review_before_authority",
+  "execution_policy": "fail_visible",
+  "integrity_hash": "63f7e04bd8ab678127d64e48454ee48d94d129523d2e7ea2859e0d736c250ccf",
+  "pipeline_id": "f0272b61-3fe6-43c8-b46f-8ddaf8a1d45b",
+  "pipeline_version": "201.1",
+  "replay_policy": "original_immutable",
+  "request": {
+    "correlation_id": "e6aca92a-b25c-4230-add3-9040e656fb51",
+    "created_at": "2026-08-05T17:13:34.406728+00:00",
+    "idempotency_key": "AIN201-1268b2d310ebd5f7d8aece5e",
+    "market_scope": null,
+    "organization_identifier": "COF-ORG-2026-001",
+    "pipeline_request_id": "df20fee7-02c5-4aea-a19a-d9d1d659a4bd",
+    "priority": "High",
+    "request_fingerprint": "1268b2d310ebd5f7d8aece5ed0ab314fa08bfe92f5d8c67322a8e6f66f958607",
+    "request_version": "1.0",
+    "requested_by": "Ricky Jarnagin",
+    "requested_outputs": [
+      "Organization Profile"
+    ],
+    "research_objective": "Identify evidence of infrastructure modernization, communications investment, grid technology programs, or related commercial signals announced by CPS Energy within the past 24 months.",
+    "review_policy": "human_required",
+    "source_policy": "approved_sources_only",
+    "workspace_id": "SLS-DEMO-001"
+  },
+  "service_versions": {
+    "AIN-101": "1.0",
+    "AIN-103": "1.0",
+    "AIN-201": "201.1",
+    "profiles": "unknown",
+    "registry": "unknown"
+  },
+  "stage_definitions": [
+    {
+      "name": "Research Request",
+      "requested_output": null,
+      "required": true,
+      "version": "1.0"
+    },
+    {
+      "name": "Target Resolution",
+      "requested_output": null,
+      "required": true,
+      "version": "1.0"
+    },
+    {
+      "name": "Organization Profile Refresh",
+      "requested_output": null,
+      "required": true,
+      "version": "1.0"
+    },
+    {
+      "name": "Report Generation",
+      "requested_output": "Executive Brief",
+      "required": false,
+      "version": "1.0"
+    }
+  ]
+}

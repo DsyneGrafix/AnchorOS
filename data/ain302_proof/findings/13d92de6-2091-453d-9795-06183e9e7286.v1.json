@@ -1,0 +1,20 @@
+{
+  "assertion": "CPS Energy has completed every modernization project.",
+  "assertion_hash": "fb5fe8785aad72fb3744da3b59b3dd915daa74f30e8b8731c99cfadd2a06fca6",
+  "classification": "Infrastructure Modernization",
+  "confidence": 0.44,
+  "created_at": "2026-08-06T01:08:38.893652+00:00",
+  "disposition": "Pending Review",
+  "extraction_engine": "deterministic-seed",
+  "finding_id": "13d92de6-2091-453d-9795-06183e9e7286",
+  "finding_version": 1,
+  "idempotency_key": "a74e5ed8053e1832b6b8591f43217050ce929b390cbae2ce3d23cca2c0ef75d7",
+  "model": "deterministic-seed",
+  "organization_id": "COF-ORG-2026-001",
+  "prompt_version": "AIN-302-proof-v1",
+  "research_run_id": "0271b05b-7132-4e7f-a8ff-ad4b04d93078",
+  "source_id": "ec534efb-8bfd-4290-b64d-7f126129659d",
+  "status": "Pending Review",
+  "supporting_excerpt_reference": null,
+  "workspace_id": "SLS-DEMO-001"
+}

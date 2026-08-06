@@ -1,0 +1,20 @@
+{
+  "assertion": "CPS Energy announced an infrastructure modernization program.",
+  "assertion_hash": "5e354432b1f697edeacbca4b3ed8c9e5c1ac097174264b3dcb5e52813aab6cd2",
+  "classification": "Infrastructure Modernization",
+  "confidence": 0.93,
+  "created_at": "2026-08-06T01:08:38.889469+00:00",
+  "disposition": "Pending Review",
+  "extraction_engine": "deterministic-seed",
+  "finding_id": "f7892b48-17b3-4989-96c4-98f73c19efff",
+  "finding_version": 1,
+  "idempotency_key": "030ebc2ec2dd6bb38f22c1a05f1d30ad40afe528c9304799085d83c8ef4e91bd",
+  "model": "deterministic-seed",
+  "organization_id": "COF-ORG-2026-001",
+  "prompt_version": "AIN-302-proof-v1",
+  "research_run_id": "dace62fa-a81b-4d6a-b774-be8ace8af4fe",
+  "source_id": "ec534efb-8bfd-4290-b64d-7f126129659d",
+  "status": "Pending Review",
+  "supporting_excerpt_reference": null,
+  "workspace_id": "SLS-DEMO-001"
+}

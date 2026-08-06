@@ -1,0 +1,12 @@
+{
+  "audit_reference": "AUD-c7b4c216-2020-4ba4-a17b-6b9bd112924c",
+  "authority_reference": "c4530a32-ecbf-4f52-96ca-2584cc9dbcdd",
+  "decision": "Approve",
+  "finding_id": "f7892b48-17b3-4989-96c4-98f73c19efff",
+  "new_status": "Approved",
+  "previous_status": "Pending Review",
+  "reason": "The admitted source directly supports this bounded assertion.",
+  "review_id": "2e977458-fc97-4514-bdcb-784aee5975f9",
+  "reviewed_at": "2026-08-06T01:08:38.918634+00:00",
+  "reviewer_id": "Ricky Jarnagin"
+}

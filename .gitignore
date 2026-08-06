@@ -32,3 +32,6 @@ backups/
 
 # LibreOffice temporary lock files
 .~lock.*#
+
+.obsidian/
+Untitled.md

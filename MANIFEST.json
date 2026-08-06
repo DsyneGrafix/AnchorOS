@@ -1,0 +1,26 @@
+{
+  "package": "CIR-002",
+  "title": "AnchorInsight SQLite Database Schema",
+  "version": "1.0.0",
+  "type": "standalone-verifiable patch",
+  "files": [
+    "anchorinsight_registry/__init__.py",
+    "anchorinsight_registry/db.py",
+    "anchorinsight_registry/schema.sql",
+    "migrations/0001_initial.sql",
+    "tests/test_cir002_schema.py",
+    "examples/seed_cps_energy.py",
+    "docs/CIR-002 - AnchorInsight SQLite Database Schema.docx",
+    "README.md",
+    "MANIFEST.json",
+    "examples/cps_energy_proof.json",
+    "VERIFICATION.txt"
+  ],
+  "prerequisites": [
+    "Python 3.12+",
+    "CIR-001 \u2014 Commercial Intelligence Registry Data Model",
+    "AIN-100 \u2014 AnchorInsight Architecture",
+    "AnchorOS platform services for later integration"
+  ],
+  "external_dependencies": []
+}

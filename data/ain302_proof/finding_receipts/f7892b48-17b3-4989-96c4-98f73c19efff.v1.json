@@ -1,0 +1,13 @@
+{
+  "assertion_hash": "5e354432b1f697edeacbca4b3ed8c9e5c1ac097174264b3dcb5e52813aab6cd2",
+  "confidence": 0.93,
+  "created_at": "2026-08-06T01:08:38.889469+00:00",
+  "disposition": "Pending Review",
+  "extraction_engine": "deterministic-seed",
+  "finding_id": "f7892b48-17b3-4989-96c4-98f73c19efff",
+  "finding_version": 1,
+  "model": "deterministic-seed",
+  "prompt_version": "AIN-302-proof-v1",
+  "source_id": "ec534efb-8bfd-4290-b64d-7f126129659d",
+  "status": "Pending Review"
+}

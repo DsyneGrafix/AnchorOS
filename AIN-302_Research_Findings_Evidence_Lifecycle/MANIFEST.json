@@ -1,0 +1,54 @@
+{
+  "package_id": "AIN-302",
+  "title": "Research Findings & Evidence Lifecycle",
+  "version": "1.0.0",
+  "package_type": "patch",
+  "requires": [
+    "AIN-201.1",
+    "AnchorOS",
+    "Python 3.12+"
+  ],
+  "implements": [
+    "Source Admission",
+    "Versioned Draft Finding",
+    "Finding Receipt",
+    "Reviewer Authority",
+    "Human Review",
+    "Evidence Commit",
+    "Evidence Chain Reconstruction"
+  ],
+  "verification": {
+    "total_tests": 27,
+    "regression_tests": 13,
+    "ain302_tests": 14,
+    "failures": 0,
+    "errors": 0,
+    "proof": "PASS"
+  },
+  "files": [
+    "MANIFEST.json",
+    "README.md",
+    "VERIFICATION.txt",
+    "anchorinsight_pipeline/__init__.py",
+    "anchorinsight_pipeline/context.py",
+    "anchorinsight_pipeline/errors.py",
+    "anchorinsight_pipeline/evidence_models.py",
+    "anchorinsight_pipeline/evidence_service.py",
+    "anchorinsight_pipeline/evidence_stages.py",
+    "anchorinsight_pipeline/evidence_store.py",
+    "anchorinsight_pipeline/models.py",
+    "anchorinsight_pipeline/orchestrator.py",
+    "anchorinsight_pipeline/replay.py",
+    "anchorinsight_pipeline/stage.py",
+    "anchorinsight_pipeline/stages.py",
+    "anchorinsight_pipeline/store.py",
+    "docs/AIN-201 \u2014 Commercial Intelligence Pipeline v1.0.docx",
+    "docs/AIN-201.2 \u2014 Research Findings & Evidence Review Pipeline.docx",
+    "docs/AIN-300 \u2014 Implementation Roadmap.docx",
+    "examples/run_ain201_pipeline.py",
+    "examples/run_ain302_evidence_proof.py",
+    "install_patch.sh",
+    "tests/test_ain201_pipeline_core.py",
+    "tests/test_ain302_evidence_lifecycle.py"
+  ]
+}

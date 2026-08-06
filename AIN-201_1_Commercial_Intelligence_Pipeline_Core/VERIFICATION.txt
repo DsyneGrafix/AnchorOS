@@ -1,0 +1,47 @@
+AIN-201.1 VERIFICATION REPORT
+========================================
+
+Package: Commercial Intelligence Pipeline Core
+Result: PASS
+
+Automated Tests
+---------------
+Tests run: 13
+Failures: 0
+Errors: 0
+
+Verified capabilities
+---------------------
+PASS  Stable request fingerprint and idempotency key
+PASS  Bounded request validation
+PASS  Deterministic stage contract
+PASS  Target resolution
+PASS  Revalidation on unresolved target
+PASS  Organization profile refresh
+PASS  Optional stage skip semantics
+PASS  Requested optional stage becomes required
+PASS  Partial completion on requested report failure
+PASS  Manifest persistence
+PASS  Receipt persistence
+PASS  Manifest and receipt integrity hashes
+PASS  Completed retry returns original receipt
+
+Integration Proof
+-----------------
+Registry implementation: AIN-101
+Profile implementation: AIN-103
+Organization: CPS Energy
+COF ID: COF-ORG-2026-001
+Pipeline Status: Completed
+Integration Result: PASS
+
+Scope not yet implemented
+-------------------------
+AIN-105 research acquisition
+Human evidence review UI
+Authoritative registry commit
+Score recalculation
+Opportunity generation
+Dashboard publication
+AIN-107 report rendering
+Full replay execution

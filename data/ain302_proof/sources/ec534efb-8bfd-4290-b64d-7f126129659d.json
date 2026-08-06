@@ -1,0 +1,15 @@
+{
+  "acquisition_method": "manual",
+  "admission_status": "Admitted",
+  "authority_classification": "Approved Source",
+  "captured_at": "2026-08-06T01:08:38.879533+00:00",
+  "content_hash": "08b1122945ba72c51bf761643f9c4f063af358b8d72f477b9ff24fa385a1795e",
+  "organization_id": "COF-ORG-2026-001",
+  "publisher": "CPS Energy",
+  "raw_content": "CPS Energy announced an infrastructure modernization program including communications investment.",
+  "source_id": "ec534efb-8bfd-4290-b64d-7f126129659d",
+  "source_type": "Corporate",
+  "title": "CPS Energy Modernization Source",
+  "url": "https://example.test/cps-energy-modernization",
+  "workspace_id": "SLS-DEMO-001"
+}

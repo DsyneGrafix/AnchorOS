@@ -1,0 +1,54 @@
+{
+  "package_id": "AIN-201.1",
+  "title": "Commercial Intelligence Pipeline Core",
+  "package_type": "patch",
+  "version": "1.0.0",
+  "prerequisites": [
+    "AnchorOS repository",
+    "CIR-002",
+    "AIN-101",
+    "AIN-102",
+    "AIN-103",
+    "Python 3.12+"
+  ],
+  "copy_targets": {
+    "anchorinsight_pipeline/": "AnchorOS/anchorinsight_pipeline/",
+    "tests/test_ain201_pipeline_core.py": "AnchorOS/tests/",
+    "examples/run_ain201_pipeline.py": "AnchorOS/examples/"
+  },
+  "scope": [
+    "Pipeline request",
+    "Pipeline manifest",
+    "Stage contract",
+    "Target resolution",
+    "Profile refresh",
+    "Pipeline receipt",
+    "Idempotency",
+    "Replay foundation"
+  ],
+  "verification": {
+    "automated_tests": 13,
+    "failures": 0,
+    "errors": 0,
+    "integration_proof": "PASS",
+    "proof_organization": "CPS Energy"
+  },
+  "files": [
+    "MANIFEST.json",
+    "README.md",
+    "VERIFICATION.txt",
+    "anchorinsight_pipeline/__init__.py",
+    "anchorinsight_pipeline/context.py",
+    "anchorinsight_pipeline/errors.py",
+    "anchorinsight_pipeline/models.py",
+    "anchorinsight_pipeline/orchestrator.py",
+    "anchorinsight_pipeline/replay.py",
+    "anchorinsight_pipeline/stage.py",
+    "anchorinsight_pipeline/stages.py",
+    "anchorinsight_pipeline/store.py",
+    "docs/AIN-201 \u2014 Commercial Intelligence Pipeline v1.0.docx",
+    "examples/run_ain201_pipeline.py",
+    "install_patch.sh",
+    "tests/test_ain201_pipeline_core.py"
+  ]
+}

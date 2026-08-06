@@ -1,0 +1,12 @@
+{
+  "audit_reference": "AUD-675f9f64-fca3-4f8a-9de0-01a7736c2ffe",
+  "authority_reference": "c4530a32-ecbf-4f52-96ca-2584cc9dbcdd",
+  "decision": "Reject",
+  "finding_id": "13d92de6-2091-453d-9795-06183e9e7286",
+  "new_status": "Rejected",
+  "previous_status": "Pending Review",
+  "reason": "The source does not establish universal project completion.",
+  "review_id": "c2e49acd-a030-4ae5-a099-372ee44dbaa9",
+  "reviewed_at": "2026-08-06T01:08:38.941933+00:00",
+  "reviewer_id": "Ricky Jarnagin"
+}

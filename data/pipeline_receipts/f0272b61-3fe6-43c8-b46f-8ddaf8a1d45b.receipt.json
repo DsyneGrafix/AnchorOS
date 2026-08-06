@@ -1,0 +1,121 @@
+{
+  "completed_at": "2026-08-05T17:13:34.420790+00:00",
+  "integrity_hash": "fed34616ca208371094d81aed4f5c4ee3eefa7aa7c31f66b115c34d3693bacdb",
+  "manifest_hash": "63f7e04bd8ab678127d64e48454ee48d94d129523d2e7ea2859e0d736c250ccf",
+  "organization_identifier": "COF-ORG-2026-001",
+  "pipeline_id": "f0272b61-3fe6-43c8-b46f-8ddaf8a1d45b",
+  "requested_outputs": [
+    "Organization Profile"
+  ],
+  "required_stage_count": 3,
+  "required_stages_passed": 3,
+  "research_objective": "Identify evidence of infrastructure modernization, communications investment, grid technology programs, or related commercial signals announced by CPS Energy within the past 24 months.",
+  "stage_results": [
+    {
+      "audit_reference": "AUD-4ba8e46d-ba6f-4889-a1e2-2d6f962cd322",
+      "completed_at": "2026-08-05T17:13:34.407175+00:00",
+      "decision": "CONTINUE",
+      "details": {
+        "idempotency_key": "AIN201-1268b2d310ebd5f7d8aece5e",
+        "request_fingerprint": "1268b2d310ebd5f7d8aece5ed0ab314fa08bfe92f5d8c67322a8e6f66f958607"
+      },
+      "evidence_references": [],
+      "input_references": [],
+      "output_references": [
+        "df20fee7-02c5-4aea-a19a-d9d1d659a4bd"
+      ],
+      "pipeline_request_id": "df20fee7-02c5-4aea-a19a-d9d1d659a4bd",
+      "reason_code": "STAGE_COMPLETE",
+      "required": true,
+      "retry_count": 0,
+      "stage_id": "67962358-31d4-4964-b443-e22a93f409fe",
+      "stage_name": "Research Request",
+      "stage_version": "1.0",
+      "started_at": "2026-08-05T17:13:34.407126+00:00",
+      "status": "Passed",
+      "warnings": []
+    },
+    {
+      "audit_reference": "AUD-06b5188d-c0c8-4691-8ee3-4fe3bc6f505a",
+      "completed_at": "2026-08-05T17:13:34.407979+00:00",
+      "decision": "CONTINUE",
+      "details": {
+        "cof_organization_id": "COF-ORG-2026-001",
+        "common_name": "CPS Energy",
+        "headquarters": "San Antonio, Texas",
+        "legal_name": "City Public Service Board of San Antonio",
+        "organization_id": "5836efee-7684-4ae7-bd8a-48f5ba13f5a8",
+        "website": "https://www.cpsenergy.com"
+      },
+      "evidence_references": [],
+      "input_references": [
+        "COF-ORG-2026-001"
+      ],
+      "output_references": [
+        "COF-ORG-2026-001"
+      ],
+      "pipeline_request_id": "df20fee7-02c5-4aea-a19a-d9d1d659a4bd",
+      "reason_code": "STAGE_COMPLETE",
+      "required": true,
+      "retry_count": 0,
+      "stage_id": "7d99b1bd-4a2d-4811-a072-e513363d68ef",
+      "stage_name": "Target Resolution",
+      "stage_version": "1.0",
+      "started_at": "2026-08-05T17:13:34.407197+00:00",
+      "status": "Passed",
+      "warnings": []
+    },
+    {
+      "audit_reference": "AUD-ae2e6ae7-f5e4-461f-bd13-540384f52c8f",
+      "completed_at": "2026-08-05T17:13:34.420749+00:00",
+      "decision": "CONTINUE",
+      "details": {
+        "cci": 81.94,
+        "decision": "Validate",
+        "display_name": "CPS Energy",
+        "readiness": "Ready"
+      },
+      "evidence_references": [],
+      "input_references": [
+        "COF-ORG-2026-001"
+      ],
+      "output_references": [
+        "profile:COF-ORG-2026-001"
+      ],
+      "pipeline_request_id": "df20fee7-02c5-4aea-a19a-d9d1d659a4bd",
+      "reason_code": "STAGE_COMPLETE",
+      "required": true,
+      "retry_count": 0,
+      "stage_id": "beed78b3-8c86-4059-a1ac-6a765e208da4",
+      "stage_name": "Organization Profile Refresh",
+      "stage_version": "1.0",
+      "started_at": "2026-08-05T17:13:34.407999+00:00",
+      "status": "Passed",
+      "warnings": []
+    },
+    {
+      "audit_reference": "AUD-89e1635b-8a7f-48e8-aae0-3fcd4867218f",
+      "completed_at": "2026-08-05T17:13:34.420778+00:00",
+      "decision": "CONTINUE",
+      "details": {},
+      "evidence_references": [],
+      "input_references": [],
+      "output_references": [],
+      "pipeline_request_id": "df20fee7-02c5-4aea-a19a-d9d1d659a4bd",
+      "reason_code": "OPTIONAL_OUTPUT_NOT_REQUESTED",
+      "required": false,
+      "retry_count": 0,
+      "stage_id": "6665f67c-ae2e-4351-b96a-203d1687646c",
+      "stage_name": "Report Generation",
+      "stage_version": "1.0",
+      "started_at": "2026-08-05T17:13:34.420769+00:00",
+      "status": "Skipped",
+      "warnings": []
+    }
+  ],
+  "stages_attempted": 4,
+  "started_at": "2026-08-05T17:13:34.407115+00:00",
+  "status": "Completed",
+  "warnings": [],
+  "workspace_id": "SLS-DEMO-001"
+}

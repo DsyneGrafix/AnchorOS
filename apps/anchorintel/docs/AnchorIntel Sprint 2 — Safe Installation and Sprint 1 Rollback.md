@@ -1,4 +1,4 @@
-# AnchorIntel Sprint 2 — Safe Installation and Sprint 1 Rollback
+
 
 Do not extract the Sprint 2 ZIP directly over the working application. Stage
 it, back up Sprint 1, inspect the overlay, run the tests, and only then start the

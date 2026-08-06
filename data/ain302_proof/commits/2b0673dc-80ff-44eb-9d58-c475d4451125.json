@@ -1,0 +1,14 @@
+{
+  "audit_reference": "AUD-1f4ade1d-e77e-4522-876a-449bd0531fc5",
+  "committed_at": "2026-08-06T01:08:38.965507+00:00",
+  "confidence": 0.93,
+  "evidence_classification": "Infrastructure Modernization",
+  "evidence_id": "2b0673dc-80ff-44eb-9d58-c475d4451125",
+  "finding_id": "f7892b48-17b3-4989-96c4-98f73c19efff",
+  "finding_version": 1,
+  "integrity_hash": "40024ee913ac7f1a4fa285395b7ae1625a27ce1deeac8f5a9f82f2dea0cb7fcf",
+  "registry_identifier": "COF-EVD-2026-001",
+  "review_id": "2e977458-fc97-4514-bdcb-784aee5975f9",
+  "reviewer_authority_reference": "c4530a32-ecbf-4f52-96ca-2584cc9dbcdd",
+  "source_id": "ec534efb-8bfd-4290-b64d-7f126129659d"
+}
