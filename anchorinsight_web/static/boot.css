@@ -1,0 +1,77 @@
+.boot-hero { align-items: center; }
+.boot-overall {
+  min-width: 260px;
+  padding: 22px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: linear-gradient(145deg, rgba(18,41,62,.96), rgba(10,25,39,.96));
+  box-shadow: var(--shadow);
+}
+.boot-overall span,
+.boot-overall small {
+  display: block;
+  color: var(--muted);
+}
+.boot-overall span {
+  text-transform: uppercase;
+  letter-spacing: .11em;
+  font-size: .78rem;
+}
+.boot-overall strong {
+  display: block;
+  margin: 8px 0;
+  font-size: 2rem;
+}
+.boot-overall.online strong { color: var(--green); }
+.boot-overall.degraded strong { color: var(--red); }
+.boot-overall.initializing strong { color: var(--amber); }
+.boot-summary { margin-bottom: 14px; }
+.boot-trace { display: grid; gap: 12px; }
+.boot-event {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  border: 1px solid rgba(97,166,218,.2);
+  border-radius: 16px;
+  overflow: hidden;
+  background: linear-gradient(145deg, rgba(18,41,62,.96), rgba(10,25,39,.96));
+  box-shadow: var(--shadow);
+}
+.boot-event.passed { border-left: 3px solid var(--green); }
+.boot-event.failed { border-left: 3px solid var(--red); }
+.boot-event.running { border-left: 3px solid var(--amber); }
+.boot-sequence {
+  display: grid;
+  place-items: center;
+  color: var(--cyan);
+  font-weight: 800;
+  border-right: 1px solid #ffffff12;
+  background: #071522;
+}
+.boot-event-body { padding: 18px 20px; }
+.boot-event-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 18px;
+}
+.boot-event-top strong { display: block; font-size: 1.08rem; }
+.boot-event-top div > span,
+.boot-event-body small { color: var(--muted); font-size: .78rem; }
+.boot-event-body p { margin: 10px 0 6px; color: #cfe0ee; }
+.boot-badge {
+  border-radius: 999px;
+  padding: 5px 9px;
+  border: 1px solid #ffffff18;
+  background: #ffffff0d;
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .06em;
+}
+.boot-badge.passed { color: var(--green); }
+.boot-badge.failed { color: var(--red); }
+.boot-badge.running { color: var(--amber); }
+@media (max-width: 620px) {
+  .boot-overall { width: 100%; }
+  .boot-event { grid-template-columns: 48px 1fr; }
+  .boot-event-top { flex-direction: column; }
+}

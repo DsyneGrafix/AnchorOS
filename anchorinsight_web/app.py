@@ -13,6 +13,8 @@ from anchorinsight_registry import (
     ScoringDecisionService,
 )
 
+from .boot import BootEventStatus, BootStatusService
+
 
 def create_app(
     database_path: str | Path | None = None,
@@ -20,6 +22,15 @@ def create_app(
     testing: bool = False,
 ) -> Flask:
     base_dir = Path(__file__).resolve().parent
+    boot = BootStatusService()
+    boot.start()
+    boot.record(
+        component="AnchorInsight Web Adapter",
+        stage="Application Factory",
+        status=BootEventStatus.RUNNING,
+        message="Initializing AnchorInsight web application.",
+    )
+
     app = Flask(
         __name__,
         template_folder=str(base_dir / "templates"),
@@ -31,13 +42,65 @@ def create_app(
     if database_path is None:
         database_path = Path("data") / "anchorinsight.db"
 
-    registry = CommercialIntelligenceRegistryService(database_path)
-    scoring = ScoringDecisionService(registry)
-    profiles = OrganizationIntelligenceProfileService(registry, scoring)
+    try:
+        registry = CommercialIntelligenceRegistryService(database_path)
+        registry_health = registry.health()
+        boot.record(
+            component="Commercial Intelligence Registry",
+            stage="Database Initialization",
+            status=(
+                BootEventStatus.PASSED
+                if registry_health["status"] == "HEALTHY"
+                else BootEventStatus.FAILED
+            ),
+            message=(
+                "Registry database initialized and health verified."
+                if registry_health["status"] == "HEALTHY"
+                else "Registry initialized in a degraded state."
+            ),
+            details=registry_health,
+        )
+
+        scoring = ScoringDecisionService(registry)
+        boot.record(
+            component="Scoring & Decision Service",
+            stage="Service Initialization",
+            status=BootEventStatus.PASSED,
+            message="Scoring and decision service initialized.",
+        )
+
+        profiles = OrganizationIntelligenceProfileService(registry, scoring)
+        profile_health = profiles.health()
+        boot.record(
+            component="Organization Intelligence Profile Service",
+            stage="Service Health",
+            status=(
+                BootEventStatus.PASSED
+                if profile_health["status"] == "HEALTHY"
+                else BootEventStatus.FAILED
+            ),
+            message=(
+                "Organization profile service health verified."
+                if profile_health["status"] == "HEALTHY"
+                else "Organization profile service reported degraded health."
+            ),
+            details=profile_health,
+        )
+    except Exception as exc:
+        boot.record(
+            component="AnchorInsight Services",
+            stage="Initialization",
+            status=BootEventStatus.FAILED,
+            message=f"Initialization failed: {exc}",
+            details={"exception_type": type(exc).__name__},
+        )
+        boot.complete()
+        raise
 
     app.extensions["anchorinsight.registry"] = registry
     app.extensions["anchorinsight.scoring"] = scoring
     app.extensions["anchorinsight.profiles"] = profiles
+    app.extensions["anchorinsight.boot"] = boot
 
     @app.get("/")
     def dashboard():
@@ -78,11 +141,24 @@ def create_app(
             abort(404)
         return render_template("organization_profile.html", profile=profile)
 
+    @app.get("/boot")
+    def boot_status():
+        return render_template("boot.html", boot=boot.snapshot())
+
+    @app.get("/api/boot/status")
+    def api_boot_status():
+        return jsonify(boot.snapshot())
+
     @app.get("/api/health")
     def api_health():
         return jsonify({
             "web": {"name": "AnchorInsight Web Adapter", "version": "1.0.0", "status": "HEALTHY"},
             "profile": profiles.health(),
+            "boot": {
+                "name": "Visual Platform Initialization",
+                "version": boot.VERSION,
+                "status": boot.snapshot()["status"],
+            },
         })
 
     @app.get("/api/organizations")
@@ -109,4 +185,11 @@ def create_app(
     def not_found(_: Any):
         return render_template("404.html"), 404
 
+    boot.record(
+        component="AnchorInsight Web Adapter",
+        stage="Route Registration",
+        status=BootEventStatus.PASSED,
+        message="Dashboard, API, health, and boot-status routes registered.",
+    )
+    boot.complete()
     return app

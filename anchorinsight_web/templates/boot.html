@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Boot Status · AnchorInsight{% endblock %}
+{% block content %}
+<link rel="stylesheet" href="{{ url_for('static', filename='boot.css') }}">
+<section class="hero boot-hero">
+  <div>
+    <div class="eyebrow">BOOT-0028 · Visual Platform Initialization</div>
+    <h1>Platform Initialization</h1>
+    <p class="lede">Observed initialization events from the running application. This screen reports recorded service state; it does not simulate boot progress.</p>
+  </div>
+  <div class="boot-overall {{ boot.status|lower }}" id="boot-overall">
+    <span>Boot Status</span>
+    <strong id="boot-status">{{ boot.status }}</strong>
+    <small id="boot-completed">{% if boot.completed_at %}Completed {{ boot.completed_at }}{% else %}In progress{% endif %}</small>
+  </div>
+</section>
+
+<section class="summary-grid boot-summary">
+  <div class="metric"><span>Recorded Events</span><strong id="boot-events-count">{{ boot.summary.events }}</strong></div>
+  <div class="metric"><span>Passed</span><strong id="boot-passed-count">{{ boot.summary.passed }}</strong></div>
+  <div class="metric"><span>Failed</span><strong id="boot-failed-count">{{ boot.summary.failed }}</strong></div>
+  <div class="metric"><span>Running</span><strong id="boot-running-count">{{ boot.summary.running }}</strong></div>
+</section>
+
+<div class="section-head">
+  <div>
+    <div class="eyebrow">Observed Boot Trace</div>
+    <h2>Initialization Sequence</h2>
+  </div>
+  <a class="button secondary" href="{{ url_for('api_boot_status') }}">Raw Status API</a>
+</div>
+
+<section class="boot-trace" id="boot-trace">
+  {% for event in boot.events %}
+  <article class="boot-event {{ event.status|lower }}">
+    <div class="boot-sequence">{{ '%02d'|format(event.sequence) }}</div>
+    <div class="boot-event-body">
+      <div class="boot-event-top">
+        <div>
+          <strong>{{ event.component }}</strong>
+          <span>{{ event.stage }}</span>
+        </div>
+        <span class="boot-badge {{ event.status|lower }}">{{ event.status }}</span>
+      </div>
+      <p>{{ event.message }}</p>
+      <small>{{ event.occurred_at }}</small>
+    </div>
+  </article>
+  {% endfor %}
+</section>
+
+<script>
+(function () {
+  const trace = document.getElementById('boot-trace');
+  const escapeHtml = (value) => String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+
+  function render(payload) {
+    document.getElementById('boot-status').textContent = payload.status;
+    document.getElementById('boot-completed').textContent = payload.completed_at
+      ? `Completed ${payload.completed_at}`
+      : 'In progress';
+    document.getElementById('boot-events-count').textContent = payload.summary.events;
+    document.getElementById('boot-passed-count').textContent = payload.summary.passed;
+    document.getElementById('boot-failed-count').textContent = payload.summary.failed;
+    document.getElementById('boot-running-count').textContent = payload.summary.running;
+
+    const overall = document.getElementById('boot-overall');
+    overall.className = `boot-overall ${payload.status.toLowerCase()}`;
+
+    trace.innerHTML = payload.events.map((event) => `
+      <article class="boot-event ${escapeHtml(event.status.toLowerCase())}">
+        <div class="boot-sequence">${String(event.sequence).padStart(2, '0')}</div>
+        <div class="boot-event-body">
+          <div class="boot-event-top">
+            <div>
+              <strong>${escapeHtml(event.component)}</strong>
+              <span>${escapeHtml(event.stage)}</span>
+            </div>
+            <span class="boot-badge ${escapeHtml(event.status.toLowerCase())}">${escapeHtml(event.status)}</span>
+          </div>
+          <p>${escapeHtml(event.message)}</p>
+          <small>${escapeHtml(event.occurred_at)}</small>
+        </div>
+      </article>`).join('');
+  }
+
+  async function refresh() {
+    try {
+      const response = await fetch('{{ url_for("api_boot_status") }}', {cache: 'no-store'});
+      if (response.ok) render(await response.json());
+    } catch (_) {
+      // The rendered server snapshot remains authoritative if polling is unavailable.
+    }
+  }
+
+  refresh();
+  window.setInterval(refresh, 2000);
+})();
+</script>
+{% endblock %}
