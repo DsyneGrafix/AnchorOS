@@ -22,6 +22,7 @@ from anchorinsight_pipeline.evidence_models import AdmittedSource
 from anchorinsight_pipeline.evidence_service import EvidenceLifecycleService
 
 from .models import AcquisitionReceipt, AcquisitionStatus, AcquiredDocument, CandidateSource
+from .storage import ResearchArtifactStore
 
 
 def utc_now() -> datetime:
@@ -119,8 +120,14 @@ class EvidenceHandoffService:
         }
     )
 
-    def __init__(self, *, evidence_service: EvidenceLifecycleService) -> None:
+    def __init__(
+        self,
+        *,
+        evidence_service: EvidenceLifecycleService,
+        artifact_store: ResearchArtifactStore | None = None,
+    ) -> None:
         self.evidence_service = evidence_service
+        self.artifact_store = artifact_store
 
     def handoff(
         self,
@@ -172,6 +179,9 @@ class EvidenceHandoffService:
             organization_id=organization_id,
             workspace_id=workspace_id,
         )
+
+        if self.artifact_store is not None:
+            self.artifact_store.save_evidence_handoff_receipt(handoff_receipt)
 
         return EvidenceHandoffResult(source=admitted, receipt=handoff_receipt)
 
