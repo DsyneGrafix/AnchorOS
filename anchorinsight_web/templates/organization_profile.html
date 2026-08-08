@@ -6,6 +6,7 @@
     <span class="id">{{ profile.organization.cof_organization_id }}</span>
     <h1>{{ profile.organization.display_name }}</h1>
     <p>{{ profile.organization.sector or "Unclassified" }} · {{ profile.organization.role }} · {{ profile.organization.headquarters or "Location unavailable" }}</p>
+    <a class="button report-button" href="{{ url_for('executive_brief', identifier=profile.organization.cof_organization_id) }}">Open Executive Brief</a>
   </div>
   <div class="hero-decision">
     <span>Current Decision</span>
