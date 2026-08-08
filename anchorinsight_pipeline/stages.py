@@ -115,8 +115,19 @@ class ReportRequestStage(PipelineStage):
                 reason_code="OPTIONAL_OUTPUT_NOT_REQUESTED",
             )
 
-        reports = context.service("reports")
         identifier = context.data["organization"]["cof_organization_id"]
+        try:
+            reports = context.service("reports")
+        except KeyError as exc:
+            return StageExecution(
+                status=StageStatus.FAILED,
+                decision="CONSTRAIN",
+                reason_code="REPORT_SERVICE_UNAVAILABLE",
+                input_references=[f"profile:{identifier}"],
+                warnings=[str(exc)],
+                details={"organization_identifier": identifier},
+            )
+
         report = reports.generate_executive_brief(identifier)
         context.data["executive_brief"] = report
 
