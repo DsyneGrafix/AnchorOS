@@ -1,8 +1,9 @@
 """
-AIN-303.1 Research Artifact Storage.
+AIN-303 Research Artifact Storage.
 
 Provides filesystem persistence for Research Plans, Candidate Sources,
-Acquired Documents, and Acquisition Receipts.
+Acquired Documents, Acquisition Receipts, and AIN-303.2 Evidence Handoff
+Receipts.
 
 Stored metadata is JSON. Original acquired content is preserved as immutable
 binary data and is never silently overwritten.
@@ -35,12 +36,13 @@ class ArtifactNotFound(ResearchStorageError):
 
 
 class ResearchArtifactStore:
-    """Filesystem-backed persistence for AIN-303.1 artifacts."""
+    """Filesystem-backed persistence for AIN-303 research artifacts."""
 
     PLAN_DIRECTORY = "research_plans"
     SOURCE_DIRECTORY = "candidate_sources"
     DOCUMENT_DIRECTORY = "acquired_documents"
     RECEIPT_DIRECTORY = "acquisition_receipts"
+    HANDOFF_RECEIPT_DIRECTORY = "evidence_handoff_receipts"
 
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root)
@@ -49,12 +51,14 @@ class ResearchArtifactStore:
         self.candidate_sources = self.root / self.SOURCE_DIRECTORY
         self.acquired_documents = self.root / self.DOCUMENT_DIRECTORY
         self.acquisition_receipts = self.root / self.RECEIPT_DIRECTORY
+        self.evidence_handoff_receipts = self.root / self.HANDOFF_RECEIPT_DIRECTORY
 
         for directory in (
             self.research_plans,
             self.candidate_sources,
             self.acquired_documents,
             self.acquisition_receipts,
+            self.evidence_handoff_receipts,
         ):
             directory.mkdir(parents=True, exist_ok=True)
 
@@ -103,12 +107,7 @@ class ResearchArtifactStore:
         self,
         document: AcquiredDocument,
     ) -> tuple[Path, Path]:
-        """
-        Preserve original source bytes and immutable metadata.
-
-        Returns:
-            A tuple containing the binary-content path and metadata path.
-        """
+        """Preserve original source bytes and immutable metadata."""
         content_path = (
             self.acquired_documents / f"{document.document_id}.bin"
         )
@@ -187,11 +186,7 @@ class ResearchArtifactStore:
         source_id: str,
         source_hash: str,
     ) -> dict[str, Any] | None:
-        """
-        Locate an existing receipt for deterministic acquisition replay.
-
-        This supports idempotent retries.
-        """
+        """Locate an existing receipt for deterministic acquisition replay."""
         for path in self.acquisition_receipts.glob("*.json"):
             payload = self._read_json(path)
 
@@ -203,6 +198,18 @@ class ResearchArtifactStore:
                 return payload
 
         return None
+
+    def save_evidence_handoff_receipt(self, receipt: Any) -> Path:
+        """Persist an immutable AIN-303.2 evidence-handoff receipt."""
+        payload = receipt.to_dict()
+        path = self.evidence_handoff_receipts / f"{payload['handoff_id']}.json"
+        return self._write_json_once(path, payload)
+
+    def load_evidence_handoff_receipt(self, handoff_id: str) -> dict[str, Any]:
+        """Load an AIN-303.2 evidence-handoff receipt."""
+        return self._read_json(
+            self.evidence_handoff_receipts / f"{handoff_id}.json"
+        )
 
     def _write_json_once(
         self,
