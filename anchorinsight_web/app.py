@@ -12,6 +12,7 @@ from anchorinsight_registry import (
     OrganizationIntelligenceProfileService,
     ScoringDecisionService,
 )
+from anchorinsight_reporting import ExecutiveReportService
 
 from .boot import BootEventStatus, BootStatusService
 
@@ -86,6 +87,14 @@ def create_app(
             ),
             details=profile_health,
         )
+
+        reports = ExecutiveReportService(profiles)
+        boot.record(
+            component="Executive Intelligence Reporting",
+            stage="Service Initialization",
+            status=BootEventStatus.PASSED,
+            message="AIN-107 executive report service initialized.",
+        )
     except Exception as exc:
         boot.record(
             component="AnchorInsight Services",
@@ -100,6 +109,7 @@ def create_app(
     app.extensions["anchorinsight.registry"] = registry
     app.extensions["anchorinsight.scoring"] = scoring
     app.extensions["anchorinsight.profiles"] = profiles
+    app.extensions["anchorinsight.reports"] = reports
     app.extensions["anchorinsight.boot"] = boot
 
     @app.get("/")
@@ -141,6 +151,14 @@ def create_app(
             abort(404)
         return render_template("organization_profile.html", profile=profile)
 
+    @app.get("/organizations/<identifier>/executive-brief")
+    def executive_brief(identifier: str):
+        try:
+            report = reports.generate_executive_brief(identifier)
+        except NotFoundError:
+            abort(404)
+        return render_template("executive_brief.html", report=report)
+
     @app.get("/boot")
     def boot_status():
         return render_template("boot.html", boot=boot.snapshot())
@@ -152,8 +170,9 @@ def create_app(
     @app.get("/api/health")
     def api_health():
         return jsonify({
-            "web": {"name": "AnchorInsight Web Adapter", "version": "1.0.0", "status": "HEALTHY"},
+            "web": {"name": "AnchorInsight Web Adapter", "version": "1.1.0", "status": "HEALTHY"},
             "profile": profiles.health(),
+            "reporting": {"name": "AIN-107 Executive Intelligence Reporting", "version": reports.VERSION, "status": "HEALTHY"},
             "boot": {
                 "name": "Visual Platform Initialization",
                 "version": boot.VERSION,
@@ -181,6 +200,13 @@ def create_app(
         except NotFoundError:
             return jsonify({"error": "organization_not_found", "identifier": identifier}), 404
 
+    @app.get("/api/organizations/<identifier>/executive-brief")
+    def api_executive_brief(identifier: str):
+        try:
+            return jsonify(reports.generate_executive_brief(identifier).to_dict())
+        except NotFoundError:
+            return jsonify({"error": "organization_not_found", "identifier": identifier}), 404
+
     @app.errorhandler(404)
     def not_found(_: Any):
         return render_template("404.html"), 404
@@ -189,7 +215,7 @@ def create_app(
         component="AnchorInsight Web Adapter",
         stage="Route Registration",
         status=BootEventStatus.PASSED,
-        message="Dashboard, API, health, and boot-status routes registered.",
+        message="Dashboard, organization, executive-report, API, health, and boot-status routes registered.",
     )
     boot.complete()
     return app
