@@ -1,12 +1,15 @@
 """AIN-302 -> Commercial Intelligence Registry adapter.
 
-Translates an approved AIN-302 evidence commit into the public
-CommercialIntelligenceRegistryService API without coupling AIN-302 to the
-registry schema.
+Translates an approved AIN-302 evidence commit into the existing
+CommercialIntelligenceRegistryService API.
 
 Boundary:
     AIN-302 owns source admission, finding review, and evidence authority.
     The Commercial Intelligence Registry owns durable commercial records.
+
+The registry currently exposes ``create_source`` and ``add_evidence`` while
+AIN-302 consumes a single ``create_evidence`` port. This adapter owns that
+translation so neither subsystem has to absorb the other's implementation.
 """
 from __future__ import annotations
 
@@ -19,13 +22,7 @@ class RegistryAdapterError(Exception):
 
 
 class CommercialRegistryEvidenceAdapter:
-    """Compatibility boundary consumed by EvidenceLifecycleService.
-
-    EvidenceLifecycleService expects a registry object exposing
-    ``create_evidence(**payload)``. The Commercial Intelligence Registry uses
-    ``create_source`` and ``add_evidence`` instead. This adapter preserves that
-    separation and maps an approved AIN-302 finding into the registry model.
-    """
+    """Compatibility boundary consumed by EvidenceLifecycleService."""
 
     VERSION = "302.2"
 
@@ -53,9 +50,9 @@ class CommercialRegistryEvidenceAdapter:
         """Create one governed commercial-registry evidence record.
 
         ``classification`` is the AIN-302 finding classification and is
-        preserved as the registry ``evidence_type``. Because this method is
-        reachable only after AIN-302 approval, the registry classification is
-        ``Verified``.
+        preserved as the registry ``evidence_type``. Because this path is
+        reachable only after AIN-302 human approval, the registry evidence
+        classification is ``Verified``.
         """
         self._validate(
             evidence_id=evidence_id,
@@ -74,20 +71,18 @@ class CommercialRegistryEvidenceAdapter:
             source_hash=source_hash,
         )
 
-        registry_source = self.registry.find_source_by_provenance(
+        normalized_hash = source_hash.strip().casefold()
+        registry_source = self._find_source_by_provenance(
             url=source_url,
-            checksum_sha256=source_hash,
+            checksum_sha256=normalized_hash,
         )
 
         if registry_source is None:
-            registry_source = self.registry.create_source(
-                source_type="AIN-302 Governed Source",
-                title=source_title,
-                actor=reviewer_id,
-                publisher=self._publisher_from_url(source_url),
-                url=source_url,
-                confidentiality="Public",
-                checksum_sha256=source_hash,
+            registry_source = self._create_source_with_hash(
+                source_title=source_title,
+                source_url=source_url,
+                source_hash=normalized_hash,
+                reviewer_id=reviewer_id,
             )
 
         evidence = self.registry.add_evidence(
@@ -111,6 +106,72 @@ class CommercialRegistryEvidenceAdapter:
                 "Commercial registry did not return a COF evidence identifier."
             )
         return str(registry_identifier)
+
+    def _find_source_by_provenance(
+        self,
+        *,
+        url: str,
+        checksum_sha256: str,
+    ) -> dict[str, Any] | None:
+        """Reuse an existing registry source with identical URL and hash."""
+        connection = self.registry.db.connect()
+        try:
+            row = connection.execute(
+                """
+                SELECT * FROM sources
+                WHERE url = ? AND checksum_sha256 = ? AND status = 'Active'
+                ORDER BY created_at
+                LIMIT 1
+                """,
+                (url, checksum_sha256),
+            ).fetchone()
+            return dict(row) if row is not None else None
+        finally:
+            connection.close()
+
+    def _create_source_with_hash(
+        self,
+        *,
+        source_title: str,
+        source_url: str,
+        source_hash: str,
+        reviewer_id: str,
+    ) -> dict[str, Any]:
+        """Create a registry source and preserve AIN-303's verified hash.
+
+        The current registry ``create_source`` API computes a checksum only
+        when raw content is supplied. AIN-302 receives the already-verified
+        source hash from AIN-303, so this compatibility adapter records that
+        exact digest immediately after source creation.
+        """
+        registry_source = self.registry.create_source(
+            source_type="AIN-302 Governed Source",
+            title=source_title,
+            actor=reviewer_id,
+            publisher=self._publisher_from_url(source_url),
+            url=source_url,
+            confidentiality="Public",
+        )
+
+        with self.registry.db.transaction() as connection:
+            connection.execute(
+                """
+                UPDATE sources
+                SET checksum_sha256 = ?
+                WHERE source_id = ?
+                """,
+                (source_hash, registry_source["source_id"]),
+            )
+
+        refreshed = self._find_source_by_provenance(
+            url=source_url,
+            checksum_sha256=source_hash,
+        )
+        if refreshed is None:
+            raise RegistryAdapterError(
+                "Registry source provenance could not be verified after creation."
+            )
+        return refreshed
 
     @staticmethod
     def _publisher_from_url(url: str) -> str:
