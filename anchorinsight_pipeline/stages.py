@@ -93,12 +93,19 @@ class ProfileRefreshStage(PipelineStage):
 
 
 class ReportRequestStage(PipelineStage):
-    """Optional placeholder proving requested-output stage semantics."""
+    """Generate an AIN-107 Executive Brief when explicitly requested."""
 
     name = "Report Generation"
-    version = "1.0"
+    version = "1.1"
     always_required = False
     requested_output = "Executive Brief"
+
+    def validate(self, context: PipelineContext) -> None:
+        if self.requested_output in context.request.requested_outputs:
+            if "organization" not in context.data:
+                raise PipelineValidationError("A canonical organization is required for reporting.")
+            if "profile" not in context.data:
+                raise PipelineValidationError("Organization Profile Refresh must pass before reporting.")
 
     def execute(self, context: PipelineContext) -> StageExecution:
         if self.requested_output not in context.request.requested_outputs:
@@ -107,9 +114,34 @@ class ReportRequestStage(PipelineStage):
                 decision="CONTINUE",
                 reason_code="OPTIONAL_OUTPUT_NOT_REQUESTED",
             )
+
+        identifier = context.data["organization"]["cof_organization_id"]
+        try:
+            reports = context.service("reports")
+        except KeyError as exc:
+            return StageExecution(
+                status=StageStatus.FAILED,
+                decision="CONSTRAIN",
+                reason_code="REPORT_SERVICE_UNAVAILABLE",
+                input_references=[f"profile:{identifier}"],
+                warnings=[str(exc)],
+                details={"organization_identifier": identifier},
+            )
+
+        report = reports.generate_executive_brief(identifier)
+        context.data["executive_brief"] = report
+
         return StageExecution(
-            status=StageStatus.FAILED,
-            decision="CONSTRAIN",
-            reason_code="REPORT_SERVICE_NOT_IMPLEMENTED",
-            warnings=["Executive Brief was requested, but AIN-107 is not implemented in AIN-201.1."],
+            input_references=[f"profile:{identifier}"],
+            output_references=[report.report_id],
+            details={
+                "report_id": report.report_id,
+                "report_version": report.report_version,
+                "decision": report.executive_summary["decision"],
+                "next_justified_action": report.executive_summary["next_justified_action"],
+                "evidence_count": report.evidence_summary["count"],
+                "verified_evidence_count": report.evidence_summary["verified_count"],
+                "evidence_basis": list(report.evidence_basis),
+                "integrity_hash": report.integrity_hash,
+            },
         )
