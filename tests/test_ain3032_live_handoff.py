@@ -11,6 +11,8 @@ from anchorinsight_pipeline.evidence_models import SourceAdmissionStatus
 from anchorinsight_pipeline.evidence_service import EvidenceLifecycleService
 from anchorinsight_pipeline.evidence_store import EvidenceLifecycleStore
 from anchorinsight_research.acquisition import AcquisitionService
+from anchorinsight_research.bridge import LiveEvidenceBridgeService
+from anchorinsight_research.discovery import SourceCatalogEntry
 from anchorinsight_research.handoff import (
     EvidenceHandoffService,
     HandoffIntegrityError,
@@ -24,7 +26,9 @@ from anchorinsight_research.models import (
     AcquisitionStatus,
     AcquiredDocument,
     CandidateSource,
+    ResearchRequest,
 )
+from anchorinsight_research.service import ResearchPlanningAcquisitionService
 from anchorinsight_research.storage import ResearchArtifactStore
 
 
@@ -204,6 +208,52 @@ class AIN3032LiveAcquisitionHandoffTests(unittest.TestCase):
         )
         self.assertEqual(list((self.evidence_store.root / "findings").glob("*.json")), [])
         self.assertEqual(list((self.evidence_store.root / "commits").glob("*.json")), [])
+
+    def test_bridge_executes_plan_live_acquisition_and_ain302_handoff(self) -> None:
+        catalog = (
+            SourceCatalogEntry(
+                title="CPS Energy Local Proof Source",
+                url=self.url,
+                organization="CPS Energy",
+                source_type="Corporate",
+                authority_score=1.0,
+                categories=("Energy", "Infrastructure"),
+                discovery_reason="AIN-303.2 local live-acquisition proof source",
+            ),
+        )
+        research = ResearchPlanningAcquisitionService(
+            store=self.research_store,
+            catalog=catalog,
+        )
+        bridge = LiveEvidenceBridgeService(
+            research_service=research,
+            handoff_service=self.handoff,
+        )
+        request = ResearchRequest(
+            workspace_id="WS-EXEC-001",
+            organization_identifier="CPS Energy",
+            objective="Research CPS Energy infrastructure and energy developments.",
+            requested_outputs=("Evidence",),
+            request_id="REQ-AIN3032-BRIDGE",
+        )
+
+        result = bridge.execute(
+            request=request,
+            workspace_id="WS-EXEC-001",
+            organization_id="COF-ORG-2026-001",
+            provider=LiveHTTPAcquisitionProvider(timeout_seconds=2.0),
+            acquisition_method="AIN-303.2 Live HTTP",
+            pipeline_id="AIN-303.2-PROOF",
+        )
+
+        self.assertTrue(result.complete)
+        self.assertEqual(result.acquisition.documents_acquired, 1)
+        self.assertEqual(result.sources_admitted_to_ain302, 1)
+        self.assertEqual(
+            result.handoffs[0].source.admission_status,
+            SourceAdmissionStatus.ADMITTED,
+        )
+        self.assertEqual(result.handoffs[0].receipt.research_request_id, request.request_id)
 
 
 if __name__ == "__main__":
