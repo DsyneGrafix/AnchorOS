@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Executive Brief · {{ report.organization.display_name }} · AnchorInsight{% endblock %}
+{% block content %}
+<section class="profile-hero">
+  <div>
+    <p class="eyebrow">Executive Intelligence Brief</p>
+    <span class="id">{{ report.report_id }} · v{{ report.report_version }}</span>
+    <h1>{{ report.organization.display_name }}</h1>
+    <p class="lede">{{ report.executive_summary.headline }}</p>
+  </div>
+  <div class="hero-decision">
+    <span>Current Decision</span>
+    <strong>{{ report.executive_summary.decision }}</strong>
+    <small>{{ report.executive_summary.confidence }} confidence</small>
+  </div>
+</section>
+
+<section class="cci-panel">
+  <div>
+    <p class="eyebrow">Commercial Confidence Index</p>
+    <div class="cci-value">{{ "%.2f"|format(report.commercial_confidence.score) if report.commercial_confidence.score is not none else "—" }}</div>
+    <p>{{ report.commercial_confidence.recommendation or report.executive_summary.basis or "Governed intelligence state available." }}</p>
+  </div>
+  <div class="next-action">
+    <span>Next justified action</span>
+    <strong>{{ report.executive_summary.next_justified_action }}</strong>
+  </div>
+</section>
+
+<section class="report-meta">
+  <div><span>Evidence</span><strong>{{ report.evidence_summary.count }}</strong></div>
+  <div><span>Verified</span><strong>{{ report.evidence_summary.verified_count }}</strong></div>
+  <div><span>Readiness</span><strong>{{ report.executive_summary.readiness.percent }}%</strong></div>
+  <div><span>Integrity</span><strong title="{{ report.integrity_hash }}">Verified</strong></div>
+</section>
+
+<section class="score-grid">
+{% for tile in report.scorecard_summary %}
+  <article class="score-tile">
+    <span>{{ tile.model }}</span>
+    <strong>{{ "%.2f"|format(tile.score) if tile.score is not none else "—" }}</strong>
+    <small>{{ tile.decision }}</small>
+  </article>
+{% endfor %}
+</section>
+
+<div class="two-column report-grid">
+  <section class="panel">
+    <div class="panel-head"><h2>Governed Evidence</h2><span>{{ report.evidence_summary.verified_count }} verified</span></div>
+    {% for item in report.evidence_summary["items"] %}
+      <div class="evidence-item">
+        <div><strong>{{ item.assertion }}</strong><small>{{ item.source_title }}</small></div>
+        <span class="decision {{ item.classification|lower }}">{{ item.classification }}</span>
+        <code>{{ item.cof_evidence_id }}</code>
+      </div>
+    {% else %}<p>No governed evidence linked.</p>{% endfor %}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Executive Basis</h2><span>{{ report.executive_summary.decision }}</span></div>
+    <p>{{ report.executive_summary.basis or "No additional decision basis recorded." }}</p>
+    <p class="status-line">{{ report.executive_summary.readiness.status }}</p>
+    {% if report.executive_summary.readiness.missing %}
+      <small class="muted">Missing:</small>
+      <ul>{% for item in report.executive_summary.readiness.missing %}<li>{{ item|replace("_"," ")|title }}</li>{% endfor %}</ul>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Opportunities</h2><span>{{ report.opportunities.count }}</span></div>
+    {% for item in report.opportunities["items"] %}
+      <div class="list-item"><div><strong>{{ item.title or item.description }}</strong><small>{{ item.status or "Open" }}</small></div></div>
+    {% else %}<p>No current opportunities recorded.</p>{% endfor %}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Risks</h2><span>{{ report.risks.count }}</span></div>
+    {% for item in report.risks["items"] %}
+      <div class="list-item"><div><strong>{{ item.title or item.description }}</strong><small>{{ item.status or "Open" }}</small></div></div>
+    {% else %}<p>No current risks recorded.</p>{% endfor %}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Actions</h2><span>{{ report.actions.count }}</span></div>
+    {% for item in report.actions["items"] %}
+      <div class="list-item"><div><strong>{{ item.description }}</strong><small>{{ item.owner or "Unassigned" }}</small></div><span>{{ item.priority }}</span></div>
+    {% else %}<p>No open actions.</p>{% endfor %}
+  </section>
+
+  <section class="panel">
+    <div class="panel-head"><h2>Data Quality</h2><span>{{ report.data_quality.warning_count }}</span></div>
+    <p class="status-line">{{ report.data_quality.status }}</p>
+    {% if report.data_quality.warnings %}
+      <ul>{% for item in report.data_quality.warnings %}<li>{{ item }}</li>{% endfor %}</ul>
+    {% else %}<p>No current warnings.</p>{% endif %}
+  </section>
+</div>
+
+<section class="report-footer panel">
+  <div>
+    <span>Evidence basis</span>
+    <strong>{{ report.evidence_basis|join(", ") if report.evidence_basis else "No committed evidence" }}</strong>
+  </div>
+  <div>
+    <span>Report integrity SHA-256</span>
+    <code>{{ report.integrity_hash }}</code>
+  </div>
+</section>
+{% endblock %}
