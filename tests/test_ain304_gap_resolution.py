@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from anchorinsight_gap_resolution import IntelligenceGapResolutionService
+from anchorinsight_gap_resolution.capabilities import load_sls_cap_001
 from anchorinsight_gap_resolution.contracts import load_osf_ec_001
 from anchorinsight_registry import CommercialIntelligenceRegistryService, OrganizationIntelligenceProfileService
 
@@ -59,6 +60,14 @@ class AIN304GapResolutionTests(unittest.TestCase):
         self.assertTrue(contract.contrary_evidence_required)
         self.assertEqual(len(contract.approval_conditions), 8)
 
+    def test_sls_cap_registry_is_machine_readable_and_bounded_to_ten_capabilities(self) -> None:
+        registry = load_sls_cap_001()
+        self.assertEqual(registry.registry_id, "SLS-CAP-001")
+        self.assertEqual(registry.admissible_capability_ids, tuple(f"CAP-{i:03d}" for i in range(1, 11)))
+        self.assertEqual(len(registry.capabilities), 10)
+        self.assertTrue(all(item.proof_refs for item in registry.capabilities))
+        self.assertIn("Potential capability is not current capability", registry.governing_rule)
+
     def test_sparse_cps_profile_generates_contract_driven_osf_requirements(self) -> None:
         plan = self.service.build_plan("COF-ORG-2026-001")
         osf = [item for item in plan.requirements if item.contract_id == "OSF-EC-001"]
@@ -74,6 +83,24 @@ class AIN304GapResolutionTests(unittest.TestCase):
         self.assertEqual(osf[0].title, "OSF-01 — Problem Alignment")
         self.assertEqual(osf[0].priority, 100)
         self.assertIn("30%", osf[0].decision_impact)
+
+    def test_osf01_and_osf02_are_bounded_by_sls_cap_001(self) -> None:
+        plan = self.service.build_plan("COF-ORG-2026-001")
+        osf = {item.obligation_id: item for item in plan.requirements if item.contract_id == "OSF-EC-001"}
+        expected = tuple(f"CAP-{i:03d}" for i in range(1, 11))
+        for obligation in ("OSF-01", "OSF-02"):
+            req = osf[obligation]
+            self.assertEqual(req.capability_registry_id, "SLS-CAP-001")
+            self.assertEqual(req.allowed_capability_ids, expected)
+            self.assertIn("SLS-CAP-001", req.objective)
+            self.assertIn("CAP-*", req.completion_condition)
+
+    def test_non_capability_osf_obligations_do_not_inherit_capability_whitelist(self) -> None:
+        plan = self.service.build_plan("COF-ORG-2026-001")
+        osf = {item.obligation_id: item for item in plan.requirements if item.contract_id == "OSF-EC-001"}
+        for obligation in ("OSF-03", "OSF-04", "OSF-05"):
+            self.assertIsNone(osf[obligation].capability_registry_id)
+            self.assertEqual(osf[obligation].allowed_capability_ids, ())
 
     def test_generic_strategic_fit_requirement_is_replaced(self) -> None:
         plan = self.service.build_plan("COF-ORG-2026-001")
