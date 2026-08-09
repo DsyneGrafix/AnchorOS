@@ -13,6 +13,8 @@ from hashlib import sha256
 import json
 from typing import Any
 
+from .contracts import EvidenceContract, load_osf_ec_001
+
 
 @dataclass(frozen=True, slots=True)
 class CollectionRequirement:
@@ -25,6 +27,8 @@ class CollectionRequirement:
     completion_condition: str
     preferred_source_class: str
     handoff_target: str = "AIN-303.2"
+    contract_id: str | None = None
+    obligation_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -37,6 +41,8 @@ class CollectionRequirement:
             "completion_condition": self.completion_condition,
             "preferred_source_class": self.preferred_source_class,
             "handoff_target": self.handoff_target,
+            "contract_id": self.contract_id,
+            "obligation_id": self.obligation_id,
         }
 
 
@@ -70,10 +76,11 @@ class GapResolutionPlan:
 class IntelligenceGapResolutionService:
     """Create deterministic, evidence-bounded collection plans from AIN-103."""
 
-    VERSION = "304.1"
+    VERSION = "304.2"
 
-    def __init__(self, profiles: Any) -> None:
+    def __init__(self, profiles: Any, *, strategic_fit_contract: EvidenceContract | None = None) -> None:
         self.profiles = profiles
+        self.strategic_fit_contract = strategic_fit_contract or load_osf_ec_001()
 
     def build_plan(self, organization_identifier: str) -> GapResolutionPlan:
         profile = self.profiles.export_payload(organization_identifier)
@@ -82,7 +89,8 @@ class IntelligenceGapResolutionService:
         requirements: list[CollectionRequirement] = []
 
         def add(gap_key: str, title: str, objective: str, priority: int,
-                impact: str, condition: str, source_class: str) -> None:
+                impact: str, condition: str, source_class: str,
+                *, contract_id: str | None = None, obligation_id: str | None = None) -> None:
             requirements.append(CollectionRequirement(
                 requirement_id=self._requirement_id(org["cof_organization_id"], gap_key),
                 gap_key=gap_key,
@@ -92,6 +100,8 @@ class IntelligenceGapResolutionService:
                 decision_impact=impact,
                 completion_condition=condition,
                 preferred_source_class=source_class,
+                contract_id=contract_id,
+                obligation_id=obligation_id,
             ))
 
         if not org.get("headquarters"):
@@ -127,7 +137,6 @@ class IntelligenceGapResolutionService:
                 "Authoritative primary or high-quality secondary source")
 
         model_priorities = {
-            "Organization Strategic Fit": 100,
             "Organizational Viability Score": 90,
             "Evidence Confidence Score": 80,
             "Relationship Strength Score": 65,
@@ -137,6 +146,9 @@ class IntelligenceGapResolutionService:
             if tile["status"] != "Missing":
                 continue
             model = tile["model"]
+            if model == "Organization Strategic Fit":
+                self._add_strategic_fit_requirements(add)
+                continue
             key = model.lower().replace(" ", "_") + "_missing"
             if model == "Commercial Confidence Index":
                 add(key, "Enable Commercial Confidence Index",
@@ -160,6 +172,22 @@ class IntelligenceGapResolutionService:
             readiness_percent=float(readiness["percent"]),
             requirements=tuple(requirements),
         )
+
+    def _add_strategic_fit_requirements(self, add: Any) -> None:
+        contract = self.strategic_fit_contract
+        for dimension in contract.dimensions:
+            gap_key = f"organization_strategic_fit_{dimension.dimension_id.lower().replace('-', '_')}_unresolved"
+            add(
+                gap_key,
+                f"{dimension.dimension_id} — {dimension.name}",
+                dimension.collection_objective,
+                dimension.priority,
+                f"Resolves the {dimension.name} obligation in {contract.contract_id} ({dimension.weight}% of the assessment model).",
+                dimension.completion_condition,
+                dimension.preferred_source_class,
+                contract_id=contract.contract_id,
+                obligation_id=dimension.dimension_id,
+            )
 
     @staticmethod
     def _requirement_id(organization_id: str, gap_key: str) -> str:

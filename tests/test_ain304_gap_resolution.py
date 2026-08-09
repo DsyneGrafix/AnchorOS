@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 from anchorinsight_gap_resolution import IntelligenceGapResolutionService
+from anchorinsight_gap_resolution.contracts import load_osf_ec_001
 from anchorinsight_registry import CommercialIntelligenceRegistryService, OrganizationIntelligenceProfileService
 
 
@@ -48,21 +49,38 @@ class AIN304GapResolutionTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.tmp.cleanup()
 
-    def test_sparse_cps_profile_generates_collection_requirements(self) -> None:
+    def test_osf_contract_is_machine_readable_and_normatively_bounded(self) -> None:
+        contract = load_osf_ec_001()
+        self.assertEqual(contract.contract_id, "OSF-EC-001")
+        self.assertEqual(sum(item.weight for item in contract.dimensions), 100)
+        self.assertEqual([item.dimension_id for item in contract.dimensions], ["OSF-01", "OSF-02", "OSF-03", "OSF-04", "OSF-05"])
+        self.assertIn("UNKNOWN", contract.evidence_states)
+        self.assertIn("NOT_SUPPORTED", contract.evidence_states)
+        self.assertTrue(contract.contrary_evidence_required)
+        self.assertEqual(len(contract.approval_conditions), 8)
+
+    def test_sparse_cps_profile_generates_contract_driven_osf_requirements(self) -> None:
         plan = self.service.build_plan("COF-ORG-2026-001")
-        gaps = {item.gap_key for item in plan.requirements}
+        osf = [item for item in plan.requirements if item.contract_id == "OSF-EC-001"]
         self.assertEqual(plan.organization_name, "CPS Energy")
         self.assertEqual(plan.readiness_percent, 12.5)
-        self.assertIn("market_link_missing", gaps)
-        self.assertIn("evidence_coverage_low", gaps)
-        self.assertIn("organization_strategic_fit_missing", gaps)
-        self.assertIn("commercial_confidence_index_missing", gaps)
+        self.assertEqual(len(osf), 5)
+        self.assertEqual([item.obligation_id for item in osf], ["OSF-01", "OSF-02", "OSF-03", "OSF-04", "OSF-05"])
+        self.assertTrue(all(item.handoff_target == "AIN-303.2" for item in osf))
 
-    def test_strategic_fit_is_highest_priority_missing_score_requirement(self) -> None:
+    def test_problem_alignment_is_highest_priority_osf_requirement(self) -> None:
         plan = self.service.build_plan("COF-ORG-2026-001")
-        score_requirements = [r for r in plan.requirements if r.gap_key.endswith("_missing")]
-        self.assertEqual(score_requirements[0].title, "Support Organization Strategic Fit")
-        self.assertEqual(score_requirements[0].priority, 100)
+        osf = [item for item in plan.requirements if item.contract_id == "OSF-EC-001"]
+        self.assertEqual(osf[0].title, "OSF-01 — Problem Alignment")
+        self.assertEqual(osf[0].priority, 100)
+        self.assertIn("30%", osf[0].decision_impact)
+
+    def test_generic_strategic_fit_requirement_is_replaced(self) -> None:
+        plan = self.service.build_plan("COF-ORG-2026-001")
+        titles = {item.title for item in plan.requirements}
+        self.assertNotIn("Support Organization Strategic Fit", titles)
+        self.assertIn("OSF-01 — Problem Alignment", titles)
+        self.assertIn("OSF-05 — Adoption / Engagement Fit", titles)
 
     def test_plan_is_deterministic_for_same_governed_state(self) -> None:
         first = self.service.build_plan("COF-ORG-2026-001")
