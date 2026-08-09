@@ -1,0 +1,87 @@
+{
+  "contract_id": "OSF-EC-001",
+  "name": "Organization Strategic Fit Evidence Contract",
+  "version": "1.0",
+  "purpose": "Define the minimum governed evidence necessary to justify an Organization Strategic Fit assessment.",
+  "core_determination": "Organization Strategic Fit measures the degree to which an organization's evidenced operating environment, priorities, needs, and adoption context align with capabilities the evaluating organization can presently and credibly provide.",
+  "exclusions": [
+    "probability of sale",
+    "organizational quality",
+    "financial viability",
+    "relationship strength",
+    "general attractiveness"
+  ],
+  "evidence_states": ["SUPPORTED", "PARTIALLY_SUPPORTED", "NOT_SUPPORTED", "UNKNOWN"],
+  "unknown_rule": "UNKNOWN SHALL NOT be interpreted as NOT_SUPPORTED and SHALL NOT automatically receive a numerical value of zero.",
+  "evidence_reference_pattern": "COF-EVD-*",
+  "source_hierarchy": [
+    "Official organization records",
+    "Government / regulatory records",
+    "Procurement, planning, budget or capital-program records",
+    "Authoritative industry sources",
+    "Credible secondary reporting"
+  ],
+  "contrary_evidence_required": true,
+  "dimensions": [
+    {
+      "dimension_id": "OSF-01",
+      "name": "Problem Alignment",
+      "weight": 30,
+      "required_determination": "Does governed evidence establish a problem or need addressed by an existing capability?",
+      "collection_objective": "Establish whether the organization has a current evidenced problem or need addressed by an existing capability.",
+      "completion_condition": "The dimension has an explicit evidence state and every non-UNKNOWN determination traces to governed COF-EVD-* evidence.",
+      "preferred_source_class": "Official organization, government/regulatory, planning, procurement, budget, capital-program, authoritative industry, or credible secondary source",
+      "priority": 100
+    },
+    {
+      "dimension_id": "OSF-02",
+      "name": "Capability Alignment",
+      "weight": 25,
+      "required_determination": "Can an existing capability credibly address the evidenced problem without speculative product expansion?",
+      "collection_objective": "Establish which existing capability credibly maps to the evidenced organizational problem without speculative product expansion.",
+      "completion_condition": "An existing capability is identified and the alignment determination traces to governed COF-EVD-* evidence; hypothetical future capabilities do not satisfy this condition.",
+      "preferred_source_class": "Governed capability definition plus evidence supporting the organizational problem",
+      "priority": 99
+    },
+    {
+      "dimension_id": "OSF-03",
+      "name": "Operational / Infrastructure Relevance",
+      "weight": 20,
+      "required_determination": "Is that capability relevant to the organization's actual operating environment, infrastructure, assets, or workflows?",
+      "collection_objective": "Establish whether the capability applies to the organization's actual operating environment, infrastructure, assets, or workflows.",
+      "completion_condition": "The relevance determination traces to governed COF-EVD-* evidence describing the applicable operating environment, infrastructure, assets, or workflows.",
+      "preferred_source_class": "Official operational, infrastructure, asset, planning, regulatory, or authoritative industry source",
+      "priority": 98
+    },
+    {
+      "dimension_id": "OSF-04",
+      "name": "Strategic Priority Alignment",
+      "weight": 15,
+      "required_determination": "Is there evidence that the relevant problem is a current organizational priority, initiative, obligation, investment, or program?",
+      "collection_objective": "Establish whether the relevant problem appears in a current strategy, capital program, modernization initiative, regulatory obligation, procurement, investment, or equivalent priority.",
+      "completion_condition": "The priority determination traces to governed COF-EVD-* evidence showing current strategic, programmatic, regulatory, procurement, investment, or equivalent relevance.",
+      "preferred_source_class": "Official strategy, capital plan, modernization program, regulatory filing, procurement, budget, or equivalent authoritative source",
+      "priority": 97
+    },
+    {
+      "dimension_id": "OSF-05",
+      "name": "Adoption / Engagement Fit",
+      "weight": 10,
+      "required_determination": "Is there evidence of a plausible organizational path for evaluating, acquiring, piloting, or adopting the capability?",
+      "collection_objective": "Establish evidence bearing on a plausible organizational pathway for evaluation, pilot, procurement, acquisition, or adoption.",
+      "completion_condition": "The adoption or engagement determination traces to governed COF-EVD-* evidence; absence of evidence remains UNKNOWN rather than NOT_SUPPORTED.",
+      "preferred_source_class": "Official procurement, innovation, pilot, vendor-engagement, organizational, or credible authoritative source",
+      "priority": 96
+    }
+  ],
+  "approval_conditions": [
+    "All five dimensions have been evaluated.",
+    "Every scored dimension is supported by governed evidence.",
+    "Every evidence reference resolves to a valid COF-EVD-* record.",
+    "UNKNOWN dimensions remain explicitly UNKNOWN.",
+    "Contrary evidence has been considered.",
+    "Capability Alignment identifies an existing capability, not a hypothetical future product.",
+    "The evidence set meets minimum source-quality requirements.",
+    "The assessment records its evidence basis and integrity hash."
+  ]
+}
