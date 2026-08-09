@@ -137,14 +137,14 @@ class IntelligenceGapResolutionService:
             if tile["status"] != "Missing":
                 continue
             model = tile["model"]
+            key = model.lower().replace(" ", "_") + "_missing"
             if model == "Commercial Confidence Index":
-                add("cci_missing", "Enable Commercial Confidence Index",
+                add(key, "Enable Commercial Confidence Index",
                     "Resolve prerequisite score-model gaps so CCI can be calculated from approved inputs.",
                     model_priorities[model], "Produces the composite commercial confidence state only after prerequisites exist.",
                     "An approved Commercial Confidence Index scorecard exists.",
                     "Derived from approved governed scorecards")
             else:
-                key = model.lower().replace(" ", "_") + "_missing"
                 add(key, f"Support {model}",
                     f"Collect the governed facts required to perform the {model} assessment; do not infer missing inputs.",
                     model_priorities[model], f"Directly resolves the missing {model} decision input.",
