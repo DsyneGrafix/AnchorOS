@@ -1,0 +1,109 @@
+{
+  "registry_id": "SLS-CAP-001",
+  "name": "Current Capability Registry",
+  "version": "1.0",
+  "purpose": "Define the SLS capabilities that OSF-EC-001 is permitted to use when determining Problem Alignment and Capability Alignment.",
+  "admissibility_rule": "A capability is ADMISSIBLE only when SLS can demonstrate it today through executable software, a validated framework, a proven workflow, or a bounded operational implementation.",
+  "governing_rule": "Potential capability is not current capability.",
+  "platform_rule": "AnchorOS is an enabling platform and SHALL NOT be treated as a generic customer-problem match.",
+  "inadmissible_categories": [
+    "AnchorFiber future capabilities",
+    "Future Workspace modules",
+    "Apify platform capabilities not implemented by SLS",
+    "Generic AI claims",
+    "Theoretical custom development",
+    "Backlog capabilities"
+  ],
+  "capabilities": [
+    {
+      "capability_id": "CAP-001",
+      "name": "Governed Commercial Intelligence",
+      "product_surface": "AnchorInsight",
+      "claim": "Convert external commercial information into governed, traceable evidence rather than treating raw information as authoritative intelligence.",
+      "status": "PROVEN",
+      "admissible_for_osf": true,
+      "proof_refs": ["AIN-302", "AIN-303.2", "BOOT-0029"]
+    },
+    {
+      "capability_id": "CAP-002",
+      "name": "Live Public-Source Acquisition",
+      "product_surface": "AnchorInsight",
+      "claim": "Acquire bounded information from identified public sources while preserving source identity, acquisition receipt, and integrity information.",
+      "status": "PROVEN",
+      "admissible_for_osf": true,
+      "proof_refs": ["AIN-303.2", "BOOT-0029"]
+    },
+    {
+      "capability_id": "CAP-003",
+      "name": "Evidence Admission & Human Governance",
+      "product_surface": "AnchorInsight",
+      "claim": "Route acquired information through findings, authorized human review, and controlled evidence admission before authoritative commitment.",
+      "status": "PROVEN",
+      "admissible_for_osf": true,
+      "proof_refs": ["AIN-302", "BOOT-0029"]
+    },
+    {
+      "capability_id": "CAP-004",
+      "name": "Commercial Intelligence Registry",
+      "product_surface": "AnchorInsight",
+      "claim": "Maintain organizations, sources, evidence, relationships, markets, scorecards, and associated provenance in a structured commercial intelligence registry.",
+      "status": "PROVEN",
+      "admissible_for_osf": true,
+      "proof_refs": ["AIN-101", "AIN-302 Registry Adapter", "BOOT-0029"]
+    },
+    {
+      "capability_id": "CAP-005",
+      "name": "Evidence-Bounded Organization Intelligence",
+      "product_surface": "AnchorInsight",
+      "claim": "Construct an organizational intelligence state from governed evidence while exposing missing information and withholding unsupported conclusions.",
+      "status": "PROVEN",
+      "admissible_for_osf": true,
+      "proof_refs": ["AIN-103", "BOOT-0029"]
+    },
+    {
+      "capability_id": "CAP-006",
+      "name": "Executive Intelligence Reporting",
+      "product_surface": "AnchorInsight",
+      "claim": "Transform governed commercial intelligence into executive-facing briefs with evidence basis, decision state, readiness, next justified action, and report integrity.",
+      "status": "PROVEN",
+      "admissible_for_osf": true,
+      "proof_refs": ["AIN-107", "BOOT-0029"]
+    },
+    {
+      "capability_id": "CAP-007",
+      "name": "Intelligence Gap Resolution",
+      "product_surface": "AnchorInsight",
+      "claim": "Detect deficiencies in an organization's intelligence state and deterministically generate prioritized, bounded collection requirements.",
+      "status": "PROVEN",
+      "admissible_for_osf": true,
+      "proof_refs": ["AIN-304", "OSF-EC-001", "196-test AnchorOS regression", "CPS Energy real-world gap-resolution proof"]
+    },
+    {
+      "capability_id": "CAP-008",
+      "name": "Evidence-Contract-Driven Research Planning",
+      "product_surface": "AnchorInsight",
+      "claim": "Translate formal assessment obligations into specific evidence requirements rather than conducting open-ended AI research.",
+      "status": "PROVEN",
+      "admissible_for_osf": true,
+      "proof_refs": ["OSF-EC-001", "AIN-304.2", "196-test AnchorOS regression"]
+    },
+    {
+      "capability_id": "CAP-009",
+      "name": "Continuation-Validity Governance",
+      "product_surface": "AnchorStack",
+      "claim": "Determine whether execution remains justified under current conditions and constrain or refuse continuation when validity no longer holds.",
+      "status": "PROVEN / FRAMEWORK",
+      "admissible_for_osf": true,
+      "proof_refs": ["AST-100", "AnchorStack Proof Surface"]
+    },
+    {
+      "capability_id": "CAP-010",
+      "name": "Deterministic Verification, Evidence & Replay",
+      "product_surface": "AnchorStack",
+      "claim": "Produce evidence, receipts, replay, and verification artifacts supporting review of governed execution and continuation decisions.",
+      "status": "PROVEN / FRAMEWORK",
+      "admissible_for_osf": true,
+      "proof_refs": ["AST-100", "AVV-100", "AnchorStack pressure-route evidence"]
+    }
+  ]
+}
