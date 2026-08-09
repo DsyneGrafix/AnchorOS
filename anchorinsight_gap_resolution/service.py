@@ -13,6 +13,7 @@ from hashlib import sha256
 import json
 from typing import Any
 
+from .capabilities import CapabilityRegistry, load_sls_cap_001
 from .contracts import EvidenceContract, load_osf_ec_001
 
 
@@ -29,6 +30,8 @@ class CollectionRequirement:
     handoff_target: str = "AIN-303.2"
     contract_id: str | None = None
     obligation_id: str | None = None
+    capability_registry_id: str | None = None
+    allowed_capability_ids: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -43,6 +46,8 @@ class CollectionRequirement:
             "handoff_target": self.handoff_target,
             "contract_id": self.contract_id,
             "obligation_id": self.obligation_id,
+            "capability_registry_id": self.capability_registry_id,
+            "allowed_capability_ids": list(self.allowed_capability_ids),
         }
 
 
@@ -76,11 +81,18 @@ class GapResolutionPlan:
 class IntelligenceGapResolutionService:
     """Create deterministic, evidence-bounded collection plans from AIN-103."""
 
-    VERSION = "304.2"
+    VERSION = "304.3"
 
-    def __init__(self, profiles: Any, *, strategic_fit_contract: EvidenceContract | None = None) -> None:
+    def __init__(
+        self,
+        profiles: Any,
+        *,
+        strategic_fit_contract: EvidenceContract | None = None,
+        capability_registry: CapabilityRegistry | None = None,
+    ) -> None:
         self.profiles = profiles
         self.strategic_fit_contract = strategic_fit_contract or load_osf_ec_001()
+        self.capability_registry = capability_registry or load_sls_cap_001()
 
     def build_plan(self, organization_identifier: str) -> GapResolutionPlan:
         profile = self.profiles.export_payload(organization_identifier)
@@ -88,9 +100,20 @@ class IntelligenceGapResolutionService:
         readiness = profile["readiness"]
         requirements: list[CollectionRequirement] = []
 
-        def add(gap_key: str, title: str, objective: str, priority: int,
-                impact: str, condition: str, source_class: str,
-                *, contract_id: str | None = None, obligation_id: str | None = None) -> None:
+        def add(
+            gap_key: str,
+            title: str,
+            objective: str,
+            priority: int,
+            impact: str,
+            condition: str,
+            source_class: str,
+            *,
+            contract_id: str | None = None,
+            obligation_id: str | None = None,
+            capability_registry_id: str | None = None,
+            allowed_capability_ids: tuple[str, ...] = (),
+        ) -> None:
             requirements.append(CollectionRequirement(
                 requirement_id=self._requirement_id(org["cof_organization_id"], gap_key),
                 gap_key=gap_key,
@@ -102,6 +125,8 @@ class IntelligenceGapResolutionService:
                 preferred_source_class=source_class,
                 contract_id=contract_id,
                 obligation_id=obligation_id,
+                capability_registry_id=capability_registry_id,
+                allowed_capability_ids=allowed_capability_ids,
             ))
 
         if not org.get("headquarters"):
@@ -175,18 +200,36 @@ class IntelligenceGapResolutionService:
 
     def _add_strategic_fit_requirements(self, add: Any) -> None:
         contract = self.strategic_fit_contract
+        capability_ids = self.capability_registry.admissible_capability_ids
+        capability_bound_obligations = {"OSF-01", "OSF-02"}
+
         for dimension in contract.dimensions:
             gap_key = f"organization_strategic_fit_{dimension.dimension_id.lower().replace('-', '_')}_unresolved"
+            is_capability_bound = dimension.dimension_id in capability_bound_obligations
+            objective = dimension.collection_objective
+            condition = dimension.completion_condition
+
+            if is_capability_bound:
+                objective += (
+                    f" Candidate alignment is limited to capabilities admitted by "
+                    f"{self.capability_registry.registry_id}; potential, future, backlog, or generic platform capabilities are excluded."
+                )
+                condition += (
+                    f" Any capability match must resolve to an admissible {self.capability_registry.registry_id} CAP-* identifier."
+                )
+
             add(
                 gap_key,
                 f"{dimension.dimension_id} — {dimension.name}",
-                dimension.collection_objective,
+                objective,
                 dimension.priority,
                 f"Resolves the {dimension.name} obligation in {contract.contract_id} ({dimension.weight}% of the assessment model).",
-                dimension.completion_condition,
+                condition,
                 dimension.preferred_source_class,
                 contract_id=contract.contract_id,
                 obligation_id=dimension.dimension_id,
+                capability_registry_id=self.capability_registry.registry_id if is_capability_bound else None,
+                allowed_capability_ids=capability_ids if is_capability_bound else (),
             )
 
     @staticmethod
