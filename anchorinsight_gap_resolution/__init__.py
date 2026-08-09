@@ -1,4 +1,12 @@
 """AIN-304 — Intelligence Gap Resolution."""
+from .osf01 import (
+    CapabilityMatchAssessment,
+    CapabilityMatchState,
+    GovernedEvidenceReference,
+    OSF01Determination,
+    OSF01ProblemAlignmentService,
+    OSF01State,
+)
 from .research_adapter import (
     CollectionRequirementAdapterError,
     CollectionRequirementResearchAdapter,
@@ -13,4 +21,10 @@ __all__ = [
     "CollectionRequirementAdapterError",
     "CollectionRequirementResearchAdapter",
     "ResearchRequestHandoff",
+    "CapabilityMatchAssessment",
+    "CapabilityMatchState",
+    "GovernedEvidenceReference",
+    "OSF01Determination",
+    "OSF01ProblemAlignmentService",
+    "OSF01State",
 ]
