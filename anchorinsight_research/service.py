@@ -366,7 +366,10 @@ class ResearchPlanningAcquisitionService:
         return ResearchPlan(
             plan_id=payload["plan_id"],
             request_id=payload["request_id"],
-            organization=payload["organization"],
+            organization_identifier=payload.get(
+                "organization_identifier",
+                payload["organization"],
+            ),
             research_categories=tuple(
                 payload["research_categories"]
             ),

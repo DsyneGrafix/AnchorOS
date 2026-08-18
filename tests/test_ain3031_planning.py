@@ -17,7 +17,7 @@ class ResearchPlanningServiceTests(unittest.TestCase):
         return ResearchRequest(
             request_id="REQ-001",
             workspace_id="SLS-DEMO-001",
-            organization_identifier="CPS Energy",
+            organization_identifier="COF-ORG-2026-001",
             objective=(
                 "Identify evidence of infrastructure modernization, "
                 "communications investment, and grid technology initiatives."
@@ -34,7 +34,11 @@ class ResearchPlanningServiceTests(unittest.TestCase):
             pipeline_id="PIPELINE-001",
         )
 
-        self.assertEqual(plan.organization, "CPS Energy")
+        self.assertEqual(
+            plan.organization_identifier,
+            "COF-ORG-2026-001",
+        )
+        self.assertEqual(plan.organization, "COF-ORG-2026-001")
         self.assertEqual(plan.workspace, "SLS-DEMO-001")
         self.assertEqual(plan.pipeline_id, "PIPELINE-001")
         self.assertEqual(plan.status, "PLANNED")
@@ -87,7 +91,7 @@ def test_categories_are_detected(self) -> None:
         request = ResearchRequest(
             request_id="REQ-002",
             workspace_id="SLS-DEMO-001",
-            organization_identifier="CPS Energy",
+            organization_identifier="COF-ORG-2026-001",
             objective="Research CPS",
             requested_outputs=["Candidate Sources"],
         )
@@ -99,7 +103,7 @@ def test_categories_are_detected(self) -> None:
         request = ResearchRequest(
             request_id="REQ-003",
             workspace_id="",
-            organization_identifier="CPS Energy",
+            organization_identifier="COF-ORG-2026-001",
             objective=(
                 "Identify recent infrastructure modernization initiatives."
             ),
@@ -113,7 +117,7 @@ def test_categories_are_detected(self) -> None:
         request = ResearchRequest(
             request_id="REQ-004",
             workspace_id="SLS-DEMO-001",
-            organization_identifier="CPS Energy",
+            organization_identifier="COF-ORG-2026-001",
             objective=(
                 "Identify recent infrastructure modernization initiatives."
             ),

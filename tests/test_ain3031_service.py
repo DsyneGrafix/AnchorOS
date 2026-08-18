@@ -24,6 +24,7 @@ class ResearchPlanningAcquisitionServiceTests(unittest.TestCase):
             SourceCatalogEntry(
                 title="CPS Energy Official Website",
                 url="https://www.cpsenergy.com",
+                organization_identifier="COF-ORG-2026-001",
                 organization="CPS Energy",
                 source_type="Corporate",
                 authority_score=1.00,
@@ -37,6 +38,7 @@ class ResearchPlanningAcquisitionServiceTests(unittest.TestCase):
             SourceCatalogEntry(
                 title="CPS Energy Newsroom",
                 url="https://newsroom.cpsenergy.com",
+                organization_identifier="COF-ORG-2026-001",
                 organization="CPS Energy",
                 source_type="Corporate",
                 authority_score=0.98,
@@ -52,6 +54,7 @@ class ResearchPlanningAcquisitionServiceTests(unittest.TestCase):
             SourceCatalogEntry(
                 title="Public Utility Commission of Texas",
                 url="https://www.puc.texas.gov",
+                organization_identifier="COF-ORG-2026-001",
                 organization="CPS Energy",
                 source_type="Regulatory",
                 authority_score=0.96,
@@ -72,7 +75,7 @@ class ResearchPlanningAcquisitionServiceTests(unittest.TestCase):
 
         self.request = ResearchRequest(
             workspace_id="SLS-DEMO-001",
-            organization_identifier="CPS Energy",
+            organization_identifier="COF-ORG-2026-001",
             objective=(
                 "Identify evidence of infrastructure modernization, "
                 "communications investment, grid technology initiatives, "
