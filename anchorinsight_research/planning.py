@@ -55,7 +55,7 @@ class ResearchPlanningService:
         return ResearchPlan(
             plan_id=self._deterministic_plan_id(request),
             request_id=request.request_id,
-            organization=request.organization_identifier,
+            organization_identifier=request.organization_identifier,
             research_categories=self._categorize(request),
             priority_sources=self.DEFAULT_PRIORITY_SOURCES,
             maximum_sources=self.DEFAULT_MAXIMUM_SOURCES,

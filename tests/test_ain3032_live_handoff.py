@@ -214,6 +214,7 @@ class AIN3032LiveAcquisitionHandoffTests(unittest.TestCase):
             SourceCatalogEntry(
                 title="CPS Energy Local Proof Source",
                 url=self.url,
+                organization_identifier="COF-ORG-2026-001",
                 organization="CPS Energy",
                 source_type="Corporate",
                 authority_score=1.0,
@@ -231,7 +232,7 @@ class AIN3032LiveAcquisitionHandoffTests(unittest.TestCase):
         )
         request = ResearchRequest(
             workspace_id="WS-EXEC-001",
-            organization_identifier="CPS Energy",
+            organization_identifier="COF-ORG-2026-001",
             objective="Research CPS Energy infrastructure and energy developments.",
             requested_outputs=("Evidence",),
             request_id="REQ-AIN3032-BRIDGE",

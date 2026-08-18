@@ -35,6 +35,7 @@ class SourceCatalogEntry:
 
     title: str
     url: str
+    organization_identifier: str
     organization: str
     source_type: str
     authority_score: float
@@ -69,6 +70,7 @@ class SourceDiscoveryService:
             SourceCatalogEntry(
                 title="CPS Energy Official Website",
                 url="https://www.cpsenergy.com",
+                organization_identifier="COF-ORG-2026-001",
                 organization="CPS Energy",
                 source_type="Corporate",
                 authority_score=1.00,
@@ -83,6 +85,7 @@ class SourceDiscoveryService:
             SourceCatalogEntry(
                 title="CPS Energy Newsroom",
                 url="https://newsroom.cpsenergy.com",
+                organization_identifier="COF-ORG-2026-001",
                 organization="CPS Energy",
                 source_type="Corporate",
                 authority_score=0.98,
@@ -96,6 +99,7 @@ class SourceDiscoveryService:
             SourceCatalogEntry(
                 title="Public Utility Commission of Texas",
                 url="https://www.puc.texas.gov",
+                organization_identifier="COF-ORG-2026-001",
                 organization="CPS Energy",
                 source_type="Regulatory",
                 authority_score=0.96,
@@ -108,6 +112,7 @@ class SourceDiscoveryService:
             SourceCatalogEntry(
                 title="City of San Antonio",
                 url="https://www.sanantonio.gov",
+                organization_identifier="COF-ORG-2026-001",
                 organization="CPS Energy",
                 source_type="Government",
                 authority_score=0.94,
@@ -120,6 +125,7 @@ class SourceDiscoveryService:
             SourceCatalogEntry(
                 title="ERCOT",
                 url="https://www.ercot.com",
+                organization_identifier="COF-ORG-2026-001",
                 organization="CPS Energy",
                 source_type="Industry",
                 authority_score=0.92,
@@ -203,8 +209,10 @@ class SourceDiscoveryService:
         if not plan.plan_id.strip():
             raise DiscoveryValidationError("plan_id is required")
 
-        if not plan.organization.strip():
-            raise DiscoveryValidationError("organization is required")
+        if not plan.organization_identifier.strip():
+            raise DiscoveryValidationError(
+                "organization_identifier is required"
+            )
 
         if plan.maximum_sources < 1:
             raise DiscoveryValidationError(
@@ -225,8 +233,8 @@ class SourceDiscoveryService:
             return False
 
         if (
-            entry.organization.casefold()
-            != plan.organization.casefold()
+            entry.organization_identifier.casefold()
+            != plan.organization_identifier.casefold()
         ):
             return False
 

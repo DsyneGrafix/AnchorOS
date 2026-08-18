@@ -31,7 +31,7 @@ class SourceDiscoveryServiceTests(unittest.TestCase):
 
         self.request = ResearchRequest(
             workspace_id="SLS-DEMO-001",
-            organization_identifier="CPS Energy",
+            organization_identifier="COF-ORG-2026-001",
             objective=(
                 "Identify evidence of infrastructure modernization, "
                 "communications investment, and grid technology initiatives."
@@ -157,6 +157,7 @@ class SourceDiscoveryServiceTests(unittest.TestCase):
             SourceCatalogEntry(
                 title="Active Source",
                 url="https://example.com/active",
+                organization_identifier="COF-ORG-2026-001",
                 organization="CPS Energy",
                 source_type="Corporate",
                 authority_score=0.90,
@@ -167,6 +168,7 @@ class SourceDiscoveryServiceTests(unittest.TestCase):
             SourceCatalogEntry(
                 title="Inactive Source",
                 url="https://example.com/inactive",
+                organization_identifier="COF-ORG-2026-001",
                 organization="CPS Energy",
                 source_type="Corporate",
                 authority_score=1.00,
@@ -189,16 +191,17 @@ class SourceDiscoveryServiceTests(unittest.TestCase):
             "Active Source",
         )
 
-    def test_wrong_organization_is_excluded(self) -> None:
+    def test_display_name_cannot_override_wrong_identifier(self) -> None:
         catalog = (
             SourceCatalogEntry(
                 title="Other Utility",
                 url="https://example.com/other",
-                organization="Austin Energy",
+                organization_identifier="COF-ORG-2026-002",
+                organization="CPS Energy",
                 source_type="Corporate",
                 authority_score=1.00,
                 categories=("Energy",),
-                discovery_reason="Wrong organization",
+                discovery_reason="Matching label but wrong canonical identity",
             ),
         )
 
@@ -216,6 +219,7 @@ class SourceDiscoveryServiceTests(unittest.TestCase):
             SourceCatalogEntry(
                 title="Social Media Source",
                 url="https://example.com/social",
+                organization_identifier="COF-ORG-2026-001",
                 organization="CPS Energy",
                 source_type="Social Media",
                 authority_score=0.80,
@@ -238,6 +242,7 @@ class SourceDiscoveryServiceTests(unittest.TestCase):
             SourceCatalogEntry(
                 title="Healthcare Source",
                 url="https://example.com/healthcare",
+                organization_identifier="COF-ORG-2026-001",
                 organization="CPS Energy",
                 source_type="Corporate",
                 authority_score=1.00,

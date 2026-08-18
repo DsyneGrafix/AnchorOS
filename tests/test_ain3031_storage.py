@@ -27,7 +27,7 @@ class ResearchArtifactStoreTests(unittest.TestCase):
 
         self.request = ResearchRequest(
             workspace_id="SLS-DEMO-001",
-            organization_identifier="CPS Energy",
+            organization_identifier="COF-ORG-2026-001",
             objective=(
                 "Identify evidence of infrastructure modernization, "
                 "communications investment, and grid technology initiatives."
@@ -90,7 +90,14 @@ class ResearchArtifactStoreTests(unittest.TestCase):
 
         self.assertTrue(path.exists())
         self.assertEqual(loaded["plan_id"], self.plan.plan_id)
-        self.assertEqual(loaded["organization"], "CPS Energy")
+        self.assertEqual(
+            loaded["organization_identifier"],
+            "COF-ORG-2026-001",
+        )
+        self.assertEqual(
+            loaded["organization"],
+            "COF-ORG-2026-001",
+        )
         self.assertEqual(loaded["status"], "PLANNED")
 
     def test_saving_identical_plan_is_idempotent(self) -> None:

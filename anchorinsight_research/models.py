@@ -122,7 +122,7 @@ class ResearchPlan:
 
     plan_id: str
     request_id: str
-    organization: str
+    organization_identifier: str
     research_categories: tuple[str, ...]
     priority_sources: tuple[str, ...]
     maximum_sources: int
@@ -134,12 +134,20 @@ class ResearchPlan:
     status: ResearchPlanStatus = ResearchPlanStatus.PLANNED
     created_at: datetime = field(default_factory=utc_now)
 
+    @property
+    def organization(self) -> str:
+        """Return the canonical identifier through the legacy field name."""
+        return self.organization_identifier
+
     def to_dict(self) -> dict[str, Any]:
         """Return a JSON-serializable representation."""
         return {
             "plan_id": self.plan_id,
             "request_id": self.request_id,
-            "organization": self.organization,
+            "organization_identifier": self.organization_identifier,
+            # Preserve the historical serialized key for readers that have
+            # not yet migrated. Its value is the canonical identifier.
+            "organization": self.organization_identifier,
             "research_categories": list(self.research_categories),
             "priority_sources": list(self.priority_sources),
             "maximum_sources": self.maximum_sources,
