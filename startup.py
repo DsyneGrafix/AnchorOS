@@ -84,6 +84,11 @@ def boot() -> None:
         handler=audit.handle_event,
     )
 
+    event_bus.subscribe(
+        event_type="anchorstack.continuation_validity.determined",
+        handler=audit.handle_event,
+    )
+
     # --------------------------------------------------
     # Discover frameworks
     # --------------------------------------------------

@@ -1,0 +1,8 @@
+test_native_event_is_audited (tests.test_anchorstack_continuation_validity.AnchorStackContinuationValidityTests.test_native_event_is_audited) ... ok
+
+----------------------------------------------------------------------
+Ran 1 test in 0.000s
+
+OK
+✓ Event: anchorstack.continuation_validity.determined [fdf6d788-8111-42ec-812e-6b0d43a38569]
+✓ Audit: [AnchorStack] anchorstack.continuation_validity.determined — Continuation validity determined: CONTINUATION_VALID.
