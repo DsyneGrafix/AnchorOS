@@ -1,6 +1,6 @@
 # AOS-CVH-0001 — Continuation Validity Hardening Integration Record
 
-Status: **INTEGRATED / VERIFIED — COMMIT AND TAG PENDING**
+Status: **INTEGRATED / VERIFIED**
 
 ## Purpose
 
@@ -27,7 +27,8 @@ is introduced.
 - Boundary verification: `action_selected` remained `false`.
 - Boot evidence: `evidence/AOS-CVH-0001/v1.0/AOS-CVH-0001_Boot_Console_Output_v1.0.txt`.
 - Event/Audit evidence: `evidence/AOS-CVH-0001/v1.0/AOS-CVH-0001_Event_Audit_Verification_v1.0.txt`.
-- Commit and tag: pending.
+- Integration commit: ac9362881d1ff1478a84ac99096b294b88b89660 — feat(anchorstack): harden continuation validity.
+- Release tag: anchoros-cvh-v1.0 (points to the release-record commit).
 
 ## External basis
 
