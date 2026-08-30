@@ -1,6 +1,6 @@
 # AOS-AG-BPE-0001 — AnchorGrid BPE CVA Native Integration Record
 
-Status: **INTEGRATED / VERIFIED — COMMIT, MERGE, AND TAG PENDING**
+Status: **INTEGRATED / VERIFIED — CANONICAL MERGE PENDING**
 
 ## Purpose
 
@@ -55,7 +55,10 @@ action_selected = false.
 - Boot evidence: evidence/AOS-AG-BPE-0001/v0.1.0/AOS-AG-BPE-0001_Boot_Console_Output_v0.1.0.txt.
 - Event and Audit evidence: evidence/AOS-AG-BPE-0001/v0.1.0/AOS-AG-BPE-0001_Event_Audit_Verification_v0.1.0.txt.
 - Two non-failing ResourceWarning messages concern pre-existing AnchorInsight CSS test-file handling and are outside this integration.
-- Integration commit, pull request, merge commit, and release tag: pending.
+- Integration commit: ac8854d2420bf065250ede545eb58ef87d4f968f — feat(anchorgrid): integrate BPE continuation validity.
+- Feature branch: feat/anchorgrid-bpe-cva-integration.
+- Release tag: anchoros-ag-bpe-cva-v0.1.0 (points to the release-record commit).
+- Pull request and canonical merge commit: pending.
 
 ## Current limitations
 
