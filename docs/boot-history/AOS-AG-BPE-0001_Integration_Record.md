@@ -1,6 +1,6 @@
 # AOS-AG-BPE-0001 — AnchorGrid BPE CVA Native Integration Record
 
-Status: **INTEGRATED / VERIFIED — CANONICAL MERGE PENDING**
+Status: **INTEGRATED / VERIFIED**
 
 ## Purpose
 
@@ -58,7 +58,8 @@ action_selected = false.
 - Integration commit: ac8854d2420bf065250ede545eb58ef87d4f968f — feat(anchorgrid): integrate BPE continuation validity.
 - Feature branch: feat/anchorgrid-bpe-cva-integration.
 - Release tag: anchoros-ag-bpe-cva-v0.1.0 (points to the release-record commit).
-- Pull request and canonical merge commit: pending.
+- Pull request: #13 — feat(anchorgrid): integrate BPE continuation validity.
+- Canonical merge commit: b0627b4dc741a0c142893248ad10f5534138ee36.
 
 ## Current limitations
 
@@ -66,4 +67,3 @@ action_selected = false.
   does not load or validate an Equipment Evidence Card directly.
 - Product acquisition, scanning, containment, switching, dispatch, remediation,
   and action execution remain external.
-- Canonical verification evidence and release closure are not yet established.
