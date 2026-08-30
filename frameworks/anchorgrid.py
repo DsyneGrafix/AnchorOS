@@ -1,8 +1,16 @@
+from collections.abc import Mapping
+from typing import Any
+
 from services.event import AnchorEvent
 from services.eventbus import EventBus
 from services.framework_identity import FrameworkIdentity
 from core.module import Module
 from core.service_registry import ServiceRegistry
+from frameworks.anchorgrid_bpe_adapter import (
+    AnchorGridBPEAdapter,
+    AnchorGridBPEResult,
+)
+from frameworks.anchorstack import AnchorStack
 
 
 class AnchorGrid(Module):
@@ -11,6 +19,7 @@ class AnchorGrid(Module):
     def __init__(self, event_bus: EventBus) -> None:
         super().__init__("AnchorGrid", "0.1.0")
         self.event_bus = event_bus
+        self.bpe_adapter = AnchorGridBPEAdapter(event_bus)
 
         self.identity = FrameworkIdentity(
             name=self.name,
@@ -37,6 +46,23 @@ class AnchorGrid(Module):
         )
 
         self.identity.display()
+
+    def submit_equipment_snapshot(
+        self,
+        *,
+        snapshot: Mapping[str, Any],
+        prepared_event: Mapping[str, Any],
+        anchorstack: AnchorStack,
+        replay_id: str | None = None,
+    ) -> AnchorGridBPEResult:
+        """Submit product evidence without determining or selecting an action."""
+
+        return self.bpe_adapter.submit(
+            snapshot=snapshot,
+            prepared_event=prepared_event,
+            anchorstack=anchorstack,
+            replay_id=replay_id,
+        )
 
     def stop(self) -> None:
         self.event_bus.publish(

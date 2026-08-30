@@ -1,0 +1,181 @@
+{
+  "schema_version": "1.0",
+  "replay_id": "AG-PR-003",
+  "version": "0.1",
+  "title": "Undeclared Remote Access — AnchorOS Native Integration Replay",
+  "synthetic_scenario": true,
+  "source": {
+    "repository": "DsyneGrafix/AnchorStack",
+    "product_commit": "c31964acc3543e346b8222e68ec87f40c3afbf9f",
+    "path": "Solutions/AnchorGrid/Bulk-Power-Equipment-Continuation-Validity/evidence/replays/AG-PR-003_Undeclared_Remote_Access_Replay_v0.1.json",
+    "route_material_sha256": "3a7e85a1d653c22e99a7b3deb56c4a5cf74f5ff3acdb56adac9f98033c89dca3"
+  },
+  "boundary": {
+    "anchorgrid_role": "Transport verified equipment evidence and prepare the native submission.",
+    "anchorstack_role": "Determine continuation validity.",
+    "anchoros_role": "Publish and audit native evidence, determination, and receipt events.",
+    "external_owner_role": "Select and execute operational action.",
+    "action_selected": false
+  },
+  "snapshots": [
+    {
+      "sequence": 1,
+      "phase": "AUTHORIZED_BASELINE",
+      "execution_id": "AG-SYNTH-BPE-001-CYCLE-001",
+      "observed_at": "2026-08-27T00:00:00Z",
+      "dimensions": {
+        "authority": "VALID",
+        "assumptions": "VALID",
+        "dependencies": "VALID",
+        "evidence": "VALID",
+        "constraints": "VALID",
+        "conditions": "VALID",
+        "scope": "VALID",
+        "communications": "VALID"
+      },
+      "safe_exit_available": true,
+      "evidence_ids": [
+        "AG-EV-003-001",
+        "AG-EV-003-002"
+      ],
+      "card_id": "AG-CARD-PR003-01",
+      "expected": {
+        "state": "CONTINUATION_VALID",
+        "reason_codes": [
+          "AS-CV-ALL-MATERIAL-DIMENSIONS-VALID"
+        ],
+        "invalid_dimensions": [],
+        "stale_dimensions": [],
+        "unknown_dimensions": [],
+        "action_selected": false,
+        "determination_id": "AS-CV-90f562f2c0614c9c57c226eb"
+      }
+    },
+    {
+      "sequence": 2,
+      "phase": "UNDECLARED_REMOTE_ACCESS_DETECTED",
+      "execution_id": "AG-SYNTH-BPE-001-CYCLE-001",
+      "observed_at": "2026-08-27T01:00:00Z",
+      "dimensions": {
+        "authority": "VALID",
+        "assumptions": "INVALID",
+        "dependencies": "UNKNOWN",
+        "evidence": "VALID",
+        "constraints": "INVALID",
+        "conditions": "INVALID",
+        "scope": "INVALID",
+        "communications": "INVALID"
+      },
+      "safe_exit_available": false,
+      "evidence_ids": [
+        "AG-EV-003-001",
+        "AG-EV-003-002",
+        "AG-EV-003-003",
+        "AG-EV-003-004"
+      ],
+      "card_id": "AG-CARD-PR003-02",
+      "expected": {
+        "state": "PROTECTIVE_HOLD",
+        "reason_codes": [
+          "AS-CV-SAFE-EXIT-UNAVAILABLE",
+          "AS-CV-ASSUMPTIONS-INVALID",
+          "AS-CV-CONSTRAINTS-INVALID",
+          "AS-CV-CONDITIONS-INVALID",
+          "AS-CV-SCOPE-INVALID",
+          "AS-CV-COMMUNICATIONS-INVALID",
+          "AS-CV-DEPENDENCIES-UNKNOWN"
+        ],
+        "invalid_dimensions": [
+          "assumptions",
+          "constraints",
+          "conditions",
+          "scope",
+          "communications"
+        ],
+        "stale_dimensions": [],
+        "unknown_dimensions": [
+          "dependencies"
+        ],
+        "action_selected": false,
+        "determination_id": "AS-CV-bb9883afc3a7560c6257942d"
+      }
+    },
+    {
+      "sequence": 3,
+      "phase": "EXTERNAL_CONTAINMENT_OBSERVED_REASSESSMENT_INCOMPLETE",
+      "execution_id": "AG-SYNTH-BPE-001-CYCLE-001",
+      "observed_at": "2026-08-27T02:00:00Z",
+      "dimensions": {
+        "authority": "VALID",
+        "assumptions": "STALE",
+        "dependencies": "UNKNOWN",
+        "evidence": "VALID",
+        "constraints": "VALID",
+        "conditions": "VALID",
+        "scope": "UNKNOWN",
+        "communications": "VALID"
+      },
+      "safe_exit_available": true,
+      "evidence_ids": [
+        "AG-EV-003-003",
+        "AG-EV-003-004",
+        "AG-EV-003-005",
+        "AG-EV-003-006"
+      ],
+      "card_id": "AG-CARD-PR003-03",
+      "expected": {
+        "state": "REASSESSMENT_REQUIRED",
+        "reason_codes": [
+          "AS-CV-ASSUMPTIONS-STALE",
+          "AS-CV-DEPENDENCIES-UNKNOWN",
+          "AS-CV-SCOPE-UNKNOWN"
+        ],
+        "invalid_dimensions": [],
+        "stale_dimensions": [
+          "assumptions"
+        ],
+        "unknown_dimensions": [
+          "dependencies",
+          "scope"
+        ],
+        "action_selected": false,
+        "determination_id": "AS-CV-c21cd3eb5d77b37202abe5b0"
+      }
+    },
+    {
+      "sequence": 4,
+      "phase": "GOVERNED_REENTRY_EVIDENCE_COMPLETE",
+      "execution_id": "AG-SYNTH-BPE-001-CYCLE-001",
+      "observed_at": "2026-08-27T03:00:00Z",
+      "dimensions": {
+        "authority": "VALID",
+        "assumptions": "VALID",
+        "dependencies": "VALID",
+        "evidence": "VALID",
+        "constraints": "VALID",
+        "conditions": "VALID",
+        "scope": "VALID",
+        "communications": "VALID"
+      },
+      "safe_exit_available": true,
+      "evidence_ids": [
+        "AG-EV-003-006",
+        "AG-EV-003-007",
+        "AG-EV-003-008",
+        "AG-EV-003-009"
+      ],
+      "card_id": "AG-CARD-PR003-04",
+      "expected": {
+        "state": "CONTINUATION_VALID",
+        "reason_codes": [
+          "AS-CV-ALL-MATERIAL-DIMENSIONS-VALID"
+        ],
+        "invalid_dimensions": [],
+        "stale_dimensions": [],
+        "unknown_dimensions": [],
+        "action_selected": false,
+        "determination_id": "AS-CV-411ff55006f91b7569aea1ab"
+      }
+    }
+  ]
+}

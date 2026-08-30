@@ -89,6 +89,16 @@ def boot() -> None:
         handler=audit.handle_event,
     )
 
+    event_bus.subscribe(
+        event_type="anchorgrid.equipment_evidence.snapshot_prepared",
+        handler=audit.handle_event,
+    )
+
+    event_bus.subscribe(
+        event_type="anchorgrid.equipment_evidence.determination_received",
+        handler=audit.handle_event,
+    )
+
     # --------------------------------------------------
     # Discover frameworks
     # --------------------------------------------------

@@ -1,0 +1,34 @@
+✓ Event: anchorgrid.equipment_evidence.snapshot_prepared [9364e502-c1fb-4c2d-8ff1-80ba4b92219d]
+✓ Audit: [AnchorGrid] anchorgrid.equipment_evidence.snapshot_prepared — Equipment evidence snapshot prepared for continuation-validity determination.
+✓ Event: anchorstack.continuation_validity.determined [f3a320e0-5801-43d8-a28b-ae6d8690f804]
+✓ Audit: [AnchorStack] anchorstack.continuation_validity.determined — Continuation validity determined: CONTINUATION_VALID.
+✓ Event: anchorgrid.equipment_evidence.determination_received [8f6267fc-5998-4f60-89b9-318a4e0f35e9]
+✓ Audit: [AnchorGrid] anchorgrid.equipment_evidence.determination_received — AnchorStack continuation-validity determination received for equipment evidence card AG-CARD-PR003-01.
+✓ Event: anchorgrid.equipment_evidence.snapshot_prepared [19d64d07-22f5-425c-b63a-ad9f08fa9faa]
+✓ Audit: [AnchorGrid] anchorgrid.equipment_evidence.snapshot_prepared — Equipment evidence snapshot prepared for continuation-validity determination.
+✓ Event: anchorstack.continuation_validity.determined [c1c3826e-0cc9-49d1-80bb-441d3d3910d3]
+✓ Audit: [AnchorStack] anchorstack.continuation_validity.determined — Continuation validity determined: PROTECTIVE_HOLD.
+✓ Event: anchorgrid.equipment_evidence.determination_received [869646f0-e418-42c7-a8d5-fc810c405789]
+✓ Audit: [AnchorGrid] anchorgrid.equipment_evidence.determination_received — AnchorStack continuation-validity determination received for equipment evidence card AG-CARD-PR003-02.
+✓ Event: anchorgrid.equipment_evidence.snapshot_prepared [2edce08f-3ca5-42d3-a0df-ba098460dfc2]
+✓ Audit: [AnchorGrid] anchorgrid.equipment_evidence.snapshot_prepared — Equipment evidence snapshot prepared for continuation-validity determination.
+✓ Event: anchorstack.continuation_validity.determined [b91f09a8-2ab5-4e9f-a4e0-77f113d058e8]
+✓ Audit: [AnchorStack] anchorstack.continuation_validity.determined — Continuation validity determined: REASSESSMENT_REQUIRED.
+✓ Event: anchorgrid.equipment_evidence.determination_received [bb643267-e4a7-4b20-ad35-86f5e944fecd]
+✓ Audit: [AnchorGrid] anchorgrid.equipment_evidence.determination_received — AnchorStack continuation-validity determination received for equipment evidence card AG-CARD-PR003-03.
+✓ Event: anchorgrid.equipment_evidence.snapshot_prepared [771b053c-27d8-4ffc-bf3d-9f56f333477d]
+✓ Audit: [AnchorGrid] anchorgrid.equipment_evidence.snapshot_prepared — Equipment evidence snapshot prepared for continuation-validity determination.
+✓ Event: anchorstack.continuation_validity.determined [53b4ebe2-9c9c-452e-abb5-bbc635617665]
+✓ Audit: [AnchorStack] anchorstack.continuation_validity.determined — Continuation validity determined: CONTINUATION_VALID.
+✓ Event: anchorgrid.equipment_evidence.determination_received [ab50f341-5241-44f2-ad80-f3a0e56c6027]
+✓ Audit: [AnchorGrid] anchorgrid.equipment_evidence.determination_received — AnchorStack continuation-validity determination received for equipment evidence card AG-CARD-PR003-04.
+
+AG-PR-003 NATIVE INTEGRATION: PASS
+States: CONTINUATION_VALID -> PROTECTIVE_HOLD -> REASSESSMENT_REQUIRED -> CONTINUATION_VALID
+Native events audited: 12
+Determination IDs:
+- AS-CV-90f562f2c0614c9c57c226eb
+- AS-CV-bb9883afc3a7560c6257942d
+- AS-CV-c21cd3eb5d77b37202abe5b0
+- AS-CV-411ff55006f91b7569aea1ab
+Boundary: action_selected remained false
